@@ -5,7 +5,6 @@ Planning and research for an Omarchy shell plugin that brings
 the herdr popup and onto the desktop.
 
 **Status: planning only.** This repository holds Markdown and nothing else.
-No plugin code gets written until the plan's go/no-go question has an answer.
 
 ## The idea in one paragraph
 
@@ -13,8 +12,8 @@ Muster is a herdr plugin: an overlay you open inside herdr that shows every
 agent across every repo, ranks what needs you, and keeps the orchestrator and
 the dependencies between repos in view. That overlay is modal, and you only see
 it once you have opened it. This plugin would put the same picture in the
-Omarchy bar and in a panel you can leave pinned on the desktop, so you can see
-what needs you without first switching to herdr.
+Omarchy bar and in a panel that drops from it, so you can see what needs you
+without first switching to herdr.
 
 ## The finding that shapes everything
 
@@ -31,8 +30,8 @@ The plan is built around that gap. See [the prior art](docs/research/prior-art.m
 
 ## Reading order
 
-1. [`docs/plan.md`](docs/plan.md): positioning, phases, what Muster itself
-   would need, decisions, open questions, and the go/no-go.
+1. [`docs/plan.md`](docs/plan.md): architecture, settled decisions, spikes,
+   and milestones M0–M5 with tasks and done criteria.
 2. [`docs/research/prior-art.md`](docs/research/prior-art.md): the existing
    herdr plugins for Omarchy and what each already covers.
 3. [`docs/research/omarchy-shell-plugins.md`](docs/research/omarchy-shell-plugins.md):

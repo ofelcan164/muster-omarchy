@@ -1,142 +1,169 @@
-# Plan
+# Implementation plan
 
-## Goal
+The work is split into milestones M0–M5. Each milestone lists the repo it
+lands in, its tasks, and when it is done. M0, M1 and M4 are changes to
+`ofelcan164/muster`; M2, M3 and M5 are this repo. Background for every
+decision is in [`research/`](research/).
 
-Put Muster's picture of your agents on the Omarchy desktop: what needs you,
-in order; what the orchestrator last said; which work has landed that
-something else is waiting on. It should be glanceable from the bar and
-actionable from a panel, without first switching to herdr.
-
-## Non-goals
-
-- **A generic herdr agent monitor.** Twelve exist; see
-  [prior art](research/prior-art.md). If a feature is on that page's "solved"
-  list and has nothing to do with Muster's model, it isn't ours to build.
-- **A second connection to herdr.** `musterd` already holds one event
-  subscription per session. The plugin reads what `musterd` writes and acts
-  through Muster's CLI.
-- **Its own idea of attention, dismissals, colours or the orchestrator.**
-  Muster's overlay and the widget must never disagree, so the widget owns
-  none of that state.
-- **Replacing the herdr popup.** Typing to agents, the full grid and the
-  keyboard flow stay in Muster's overlay.
-
-## Shape
+## Architecture
 
 ```
-herdr server ──events──▶ musterd ──writes──▶ snapshot.json, ui.json
-                                                   │
-                         Omarchy shell plugin ◀────┘  (FileView watch; display only)
-                                   │
-                                   └──actions──▶ muster CLI ──▶ herdr socket
-                                                 (jump, tell, report, dismiss)
-                                   └──raise window──▶ Hyprland
+herdr ──events──▶ musterd ──writes──▶ <state>/snapshot.json, <state>/ui.json
+                                              │ FileView (no polling)
+                           Omarchy plugin ◀───┘
+                                 │ Process
+                                 ├──▶ muster --state-dir <state> jump|tell|report|dismiss
+                                 └──▶ hyprctl (raise herdr's window)
 ```
 
-This is how Omarchy's own `omarchy.agents` widget works: a collector writes
-records and the widget is "strictly a display" (see
-[Omarchy shell plugins](research/omarchy-shell-plugins.md)).
+- **The plugin holds no herdr connection and no state of its own.** Ranking,
+  dismissals, colours and the orchestrator all come from Muster's files.
+- **Every action is a `muster` CLI call**, so the overlay and the widget share
+  one implementation.
+- `<state>` is `~/.local/state/herdr/plugins/muster`, overridable by the
+  `stateDir` setting. M1–M4 use the default herdr session only.
 
-## Phases
+## Settled decisions
 
-Each phase is only worth starting if the one before it got used.
+| Decision | Choice |
+|---|---|
+| Plugin id | `io.github.ofelcan164.muster` |
+| Code location | This repo, with `manifest.json` at the root. `omarchy plugin add` clones the whole repo and rejects symlinks, so the plugin can't live inside the Muster repo. |
+| Kinds | `bar-widget` only. The panel is loaded by the widget, as in `omarchy-hypr-rules-studio`. |
+| Data source | `FileView` on `snapshot.json` and `ui.json`. Muster adds `snapshot_version` (M1). The widget shows "update Muster" for any version it doesn't know. |
+| Staleness | `now - generated_at > 30s` shows a stale state, never a count. |
+| Keybinding | `SUPER + CTRL + M` runs `omarchy-shell shell toggle io.github.ofelcan164.muster`, written by `muster install --omarchy` (M4). |
+| Notifications | None until M5, and then only for `LANDED` rows. |
 
-### Phase 0: no plugin (Muster-side only)
+## Spikes (run on an Omarchy 4 machine before M2)
 
-- Add `muster badge --json` to Muster, returning Waybar-style
-  `{text, tooltip, class}`. The tooltip carries the ribbon rows.
-- Document a one-line inline bar module for `~/.config/omarchy/shell.json`:
-  `{ "id": "muster", "type": "command", "exec": "muster --state-dir … badge --json", "interval": 5, "onClick": "omarchy-launch-terminal-herdr" }`.
-- Cost: a small change to `Badge`, and a README section.
-- **What it proves:** whether you look at Muster's count from the desktop at all.
+Each spike answers one question with a command, and its result goes into
+`research/`.
 
-### Phase 1: a bar widget with a drop-down panel (read-only)
+| # | Question | How to check |
+|---|---|---|
+| S1 | Named session socket path | `herdr --session x`, then `ls ~/.config/herdr/sessions/x/` and `env` inside a pane of it (`HERDR_SOCKET_PATH`). |
+| S2 | Raising herdr's terminal window | `hyprctl clients -j`, then match `title` against Omarchy's `window_title = "{hostname}: {workspace}"`, then `hyprctl dispatch focuswindow address:<addr>`. Also read `jankeesvw/omarchy-herdr` `bin/` for its method. |
+| S3 | Whether `FileView` sees atomic rename-over writes | A minimal QML `FileView { path: …/snapshot.json; watchChanges: true }` that logs `onFileChanged` while `musterd` runs. |
+| S4 | Muster's key install under Omarchy's `prefix = "ctrl+space"` and existing `tab_bar_right` | `muster install` on the Omarchy default config, then `herdr config check`, then check that `muster badge` shows in the tab bar. |
+| S5 | How long keys are gone after `omarchy-refresh-herdr` | Run it, try `ctrl+space m`, restart herdr, try again. |
 
-- **Bar:** Muster's badge, coloured by the top ribbon row (red for blocked, the landed colour for `LANDED`). It hides when nothing needs you, and says "stale" when `generated_at` is older than 30 s.
+## M0: `muster badge --json` (muster repo)
+
+- **Tasks:**
+  - `cmd/muster`: `badge` accepts `--json`.
+  - `internal/ui`: add `BadgeJSON(letter) string` next to `Badge`. It returns
+    `{"text","tooltip","class"}`:
+    - `text` is the same as `Badge`, without the key hint;
+    - `tooltip` is one line per undismissed ribbon row, formatted
+      `REASON repo/agent · detail`, capped at `triage.RibbonMax`;
+    - `class` is the first of these that applies: `stale`, `landed`,
+      `needs-you`, `working`, `idle`.
+  - Tests: one per class, a stale snapshot, dismissed rows excluded, and
+    output that parses as JSON.
+  - README: an inline Omarchy bar module:
+    ```json
+    { "id": "muster", "type": "command",
+      "exec": "muster --state-dir ~/.local/state/herdr/plugins/muster badge --json",
+      "interval": 5, "onClick": "omarchy-launch-terminal-herdr" }
+    ```
+- **Done when:** that module shows in the Omarchy bar, and the count matches
+  the herdr tab bar badge.
+
+## M1: CLI for an outside caller (muster repo)
+
+- **Tasks:**
+  - Add `snapshot_version` (int, starting at 1) to `model.Snapshot`, and
+    document the fields the widget relies on in Muster's `docs/`.
+  - `muster tell <text>`: the overlay's `i` path (`agent.prompt` then
+    `recordTold`), extracted from `internal/ui` so both callers share it.
+  - `muster report <pane>`: the overlay's `t` path, extracted the same way.
+  - `muster dismiss <pane>`: the overlay's `x` path, with the write to
+    `ui.json` done through `state.UIState.Save`.
+  - `muster mark-orchestrator [pane]`: an explicit pane that wins over the
+    context pane.
+  - `--session NAME` on `muster` and `musterd`, which selects
+    `sessions/NAME/` and that session's socket (path from S1).
+  - Tests for each command against a fake socket, as the existing `ui` tests
+    do with injected prompters.
+- **Done when:** each of `jump <pane>`, `jump orchestrator`, `tell`, `report`,
+  `dismiss` works from a plain shell with only `--state-dir`, with no herdr
+  environment.
+
+## M2: bar widget and read-only panel (this repo)
+
+- **Files:**
+  ```
+  manifest.json      kinds ["bar-widget"], entryPoints.barWidget "BarWidget.qml"
+  BarWidget.qml      icon, count and colour class, opens the panel
+  Panel.qml          ribbon, orchestrator strip, repo list; IpcHandler open|close|toggle
+  Data.qml           FileView on snapshot.json and ui.json, parsing, the stale timer
+  Actions.qml        one Process queue for muster and hyprctl calls
+  README.md, LICENSE
+  ```
+- **Manifest `barWidget` block:** `defaultSection "right"`,
+  `allowMultiple false`, and `defaults { "stateDir": "", "muster": "muster" }`.
+  An empty `stateDir` means the default path. The schema has a `path` entry
+  for `stateDir` and a `string` entry for `muster`, the binary to run.
+- **Bar widget:**
+  - hidden when there's no snapshot file and nothing needs you;
+  - the ribbon count otherwise, coloured by the top row's reason;
+  - a stale glyph when the snapshot is stale.
 - **Panel:**
-  1. The ribbon, in Muster's order, minus rows dismissed in `ui.json`.
-  2. The orchestrator strip: who, status, last said, and how long ago.
-  3. One line per repo with its sigil and colour, and counts by status.
-- **Click a row:** run `muster jump <pane>`, then raise herdr's window in
-  Hyprland.
-- **Data:** a `FileView` on `snapshot.json` and `ui.json`, with no polling.
-- **Keybinding:** a line for `~/.config/hypr/bindings.lua`, as in
-  `o.bind("SUPER + CTRL + M", "Muster", "omarchy-shell shell toggle <id>")`.
-  Check `omarchy menu keybindings --print` for a free chord first.
+  1. The ribbon, in snapshot order, minus rows whose `ui.json`
+     `dismissed[pane] == status`.
+  2. The orchestrator: sigil and repo, status and age, `last_said` on two
+     lines, and the said age. "None marked" when `found` is false.
+  3. One row per repo: sigil in its colour, display name, and counts by
+     status.
+- **Click a ribbon or orchestrator row:** run `muster --state-dir <s> jump
+  <pane>`, then raise the herdr window (S2 method). Keys: `j`/`k` move,
+  `Enter` jumps, `Esc` closes.
+- **Repo colours:** port `identity.Palette` (`internal/identity/identity.go`)
+  to QML, indexed by `color_index`, overridden by `ui.json` `colors`.
+- **Validate** with `omarchy plugin validate .`.
+- **Done when:** installed with `omarchy plugin add <this repo> --enable`, it
+  shows the same ribbon, orchestrator and counts as Muster's overlay, and a
+  click lands on the pane.
 
-### Phase 2: act from the panel
+## M3: actions in the panel (this repo)
 
-Each action needs a Muster CLI command first
-(see [Muster interfaces](research/muster-interfaces.md)):
+- **Keys:**
 
-| Action | Key | Muster command |
-|---|---|---|
-| Message the orchestrator | `i` | `muster tell <text>` |
-| Tell it a landed row landed | `t` | `muster report <pane>` |
-| Dismiss a ribbon row | `x` | `muster dismiss <pane>` |
-| Jump to the orchestrator | `M` | `muster jump orchestrator` |
+  | Key | Command |
+  |---|---|
+  | `i` | Opens a one-line input, then runs `muster tell <text>` |
+  | `t` | `muster report <pane>` on the selected `LANDED` row |
+  | `x` | `muster dismiss <pane>` |
+  | `M` | `muster jump orchestrator` plus a window raise |
 
-The keys match the overlay's, so muscle memory carries over.
+- **Errors:** a failed command shows its stderr on the panel's last line,
+  which is the overlay's notice line.
+- **Done when:** each action changes what Muster's overlay shows, and vice
+  versa, within one refresh.
 
-### Phase 3: only if still wanted
+## M4: `muster install --omarchy` (muster repo)
 
-- **Pin mode.** Only if jankeesvw's pinned card doesn't already cover the
-  need alongside this plugin. If built, copy its behaviour: drag by a handle
-  only, resize from a corner, remember geometry per screen in the widget's
-  `shell.json` entry, and show the accent border only while focused.
-- **Notifications about Muster-only events, off by default.** A `LANDED` row
-  appearing; the orchestrator ending a turn with a new message. Nothing about
-  plain "blocked" or "done": Udder and others already do that, and doubling up
-  is noise.
-- **Every herdr session at once.** Read `sessions/*/snapshot.json` too, with a
-  session switch in the panel.
+- **Tasks:**
+  - Detect Omarchy: `$OMARCHY_PATH` is set, or `omarchy-shell` is on `PATH`.
+  - Write a marked block to `~/.config/hypr/bindings.lua` containing the
+    `o.bind` line, with a backup, matching how Muster writes the herdr config.
+  - `uninstall` removes the block.
+  - `muster doctor` reports:
+    - whether the plugin is installed (`omarchy plugin list --json`);
+    - whether the bindings block is present;
+    - whether the herdr keys are missing after an `omarchy-refresh-herdr`
+      (S5), with the fix being `muster install`.
+- **Done when:** a fresh Omarchy machine goes from nothing to working with
+  `omarchy plugin add … --enable` and `muster install --omarchy`, and back
+  with `muster uninstall`.
 
-## Decisions to make
+## M5: after M3 is in daily use
 
-| Decision | Options | Recommendation |
-|---|---|---|
-| How the widget reads the snapshot | (a) `FileView` on `snapshot.json`; (b) run `musterd dump --json` | (a) for cost, which is the platform's idiom. It needs Muster to promise the file's shape, or a versioned `dump --json` shape to validate against. |
-| Where the plugin's code lives | (a) this repo, later public; (b) a subdirectory of the Muster repo; (c) the root of the Muster repo, next to `herdr-plugin.toml`, as Udder does | (a). `omarchy plugin add` clones the whole repo into `~/.config/omarchy/plugins/<id>/` and rejects any symlink in it, so (c) would clone all of Muster's Go source into the shell's plugin directory. (b) isn't installable by `omarchy plugin add`. |
-| Plugin id | Namespaced like the prior art, e.g. `io.github.ofelcan164.muster` | Decide before the first `shell.json` entry exists, because renaming later strands settings. |
-| Default session | Default session only, or all | Default only in phase 1, which matches `musterd dump` from a plain shell. |
-| First-run setup | No install hooks exist. Options: document the steps; do them from QML on first load (Udder's pattern); or add `muster install --omarchy` | `muster install --omarchy`: Muster already owns "the only code that writes files the user owns", so writing the `bindings.lua` line and the `shell.json` entry belongs there, with the same marked-block discipline. |
-
-## Open questions to answer on a real Omarchy machine
-
-1. Where is a named herdr session's socket? `muster jump` falls back to
-   `~/.config/herdr/herdr.sock`, which is only the default session's.
-2. How best to find and raise herdr's terminal window in Hyprland. Match on
-   the `window_title` Omarchy sets (`"{hostname}: {workspace}"`), or copy
-   jankeesvw's approach.
-3. Does `FileView` see Muster's atomic rename-over writes of `snapshot.json`?
-   `omarchy.agents` watches files written the same way, but confirm it.
-4. Does Muster's key installer choose cleanly under Omarchy's
-   `prefix = "ctrl+space"`, and insert its badge into Omarchy's existing
-   `tab_bar_right` as designed?
-5. After `omarchy-refresh-herdr` overwrites the herdr config, how long are
-   Muster's keys gone in practice, and should the widget offer to reinstall
-   them? (See [herdr in Omarchy](research/omarchy-herdr.md).)
-6. Does the orchestrator strip earn its place in a bar panel, or does it only
-   matter while you're inside herdr?
-
-## Go / no-go
-
-After phase 0 has run for a week or so:
-
-- **Go** if you notice the bar count and act on it, and you find yourself
-  wanting the orchestrator's last line or `LANDED` rows without opening herdr.
-- **Stop** if jankeesvw's panel (or Udder's notifications) plus Muster's
-  existing tab bar badge already covers it. Then Muster's Omarchy story is
-  "phase 0 and a README section", which is a fine outcome.
-
-## Risks
-
-- **Omarchy 4 is new.** The shipped `version` file reads `4.0.0.alpha`, and
-  the plugin API and facades are changing fast. Keep the QML small, and keep
-  the logic in Muster where it's tested.
-- **Coupling to Muster's snapshot.** A widget that parses internal JSON breaks
-  on a shape change. That's the argument for a versioned `dump --json`, or for
-  Muster owning the widget's data contract outright.
-- **The trust ask.** Users install unsandboxed code into their shell. A
-  display-only widget that shells out to one known binary is an easy review,
-  so keep it that way.
+- **Notifications for `LANDED` rows:** `notify-send` with a jump action, off by
+  default, controlled by a `notifyLanded` setting.
+- **All sessions:** read `sessions/*/snapshot.json`, with a session switch in
+  the panel. Needs `--session` from M1.
+- **Pin mode:** only if needed alongside `jankeesvw.herdr`. If built, follow
+  its model: drag by a handle, resize from a corner, geometry per screen in
+  this widget's `shell.json` entry.
