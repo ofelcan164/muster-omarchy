@@ -13,7 +13,8 @@ const SCRIPT = path.join(__dirname, "..", "bin", "muster-omarchy")
 // into the log, plus whatever the test asks of it through the environment.
 const FAKES = {
   muster: `echo "muster $*" >> "$LOG"
-if [ -n "$MUSTER_FAIL" ]; then echo "warming up" >&2; echo "$MUSTER_FAIL" >&2; exit 1; fi`,
+if [ -n "$MUSTER_FAIL" ]; then echo "warming up" >&2; echo "$MUSTER_FAIL" >&2; exit 1; fi
+if [ -n "$MUSTER_OUT" ]; then echo "$MUSTER_OUT"; fi`,
   hyprctl: `echo "hyprctl $*" >> "$LOG"
 if [ "$1" = clients ]; then cat "$CLIENTS"; fi`,
   ps: `cat "$PS_OUT"`,
@@ -117,6 +118,62 @@ test("a failed jump reports muster's last line and raises nothing", () => {
   assert.equal(res.status, 1)
   assert.equal(res.stderr.trim(), "muster jump: no orchestrator marked")
   assert.deepEqual(s.calls(), ["muster jump w1:p2"])
+})
+
+// What muster prints when herdr's socket is not there: the server is down.
+const DIAL = "muster jump: dial /home/x/.config/herdr/herdr.sock: dial unix /home/x/.config/herdr/herdr.sock: connect: no such file or directory"
+
+test("a jump with herdr not running starts herdr and says the jump did not happen", () => {
+  const s = sandbox({ clients: CLIENTS, ps: PS })
+  const res = s.run(["jump", "w1:p2"], { MUSTER_FAIL: DIAL })
+  assert.equal(res.status, 1)
+  assert.equal(res.stderr.trim(), "herdr was not running, so it is starting. Jump again once your agents are back.")
+  assert.deepEqual(s.waitForCalls(2), ["muster jump w1:p2", "launch"])
+})
+
+test("tell, report and dismiss pass through to muster and print what it said", () => {
+  const s = sandbox()
+  let res = s.run(["--state-dir", "/state", "tell", "pull main; rerun $(id)"], { MUSTER_OUT: "sent to the orchestrator" })
+  assert.equal(res.status, 0, res.stderr)
+  assert.equal(res.stdout.trim(), "sent to the orchestrator")
+  res = s.run(["--state-dir", "/state", "report", "w3:p1"], { MUSTER_OUT: "told the orchestrator api landed" })
+  assert.equal(res.stdout.trim(), "told the orchestrator api landed")
+  res = s.run(["--state-dir", "/state", "dismiss", "w2:p1"])
+  assert.equal(res.status, 0, res.stderr)
+  assert.deepEqual(s.calls(), [
+    "muster --state-dir /state tell pull main; rerun $(id)",
+    "muster --state-dir /state report w3:p1",
+    "muster --state-dir /state dismiss w2:p1"
+  ])
+})
+
+test("tell refuses an empty message, report and dismiss refuse a bad pane", () => {
+  const s = sandbox()
+  assert.match(s.run(["tell", "  "]).stderr, /nothing to send/)
+  assert.match(s.run(["report", "-h"]).stderr, /not a pane id/)
+  assert.match(s.run(["dismiss", ""]).stderr, /not a pane id/)
+  assert.deepEqual(s.calls(), [])
+})
+
+test("an action on a muster too old for it asks for an update", () => {
+  const s = sandbox()
+  const res = s.run(["tell", "hi"], { MUSTER_FAIL: 'muster: unknown command "tell"\nmuster — the Muster client\n\nusage:' })
+  assert.equal(res.status, 1)
+  assert.equal(res.stderr.trim(), "this needs a newer Muster than the one installed: run the Update Muster action in herdr")
+})
+
+test("an action with herdr not running says so and starts nothing", () => {
+  const s = sandbox()
+  const res = s.run(["report", "w3:p1"], { MUSTER_FAIL: DIAL.replace("jump", "report") })
+  assert.equal(res.status, 1)
+  assert.equal(res.stderr.trim(), "herdr is not running")
+  assert.deepEqual(s.waitForCalls(2), ["muster report w3:p1"])
+})
+
+test("an action that fails otherwise shows muster's last line", () => {
+  const s = sandbox()
+  const res = s.run(["dismiss", "w9:p1"], { MUSTER_FAIL: "muster dismiss: w9:p1 has no row in the ribbon to dismiss" })
+  assert.equal(res.stderr.trim(), "muster dismiss: w9:p1 has no row in the ribbon to dismiss")
 })
 
 test("jump refuses anything that is not a pane id", () => {

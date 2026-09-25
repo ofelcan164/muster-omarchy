@@ -23,16 +23,17 @@ Item {
   }
 
   // run queues one call. onDone(ok, message) gets the last line of stderr on
-  // a failure, which is what the panel shows.
+  // a failure, and of stdout on success: what went wrong, or what was done.
   function run(args, onDone) {
     queue.push({ args: args, onDone: onDone })
     queue = queue
     pump()
   }
 
-  function jump(target, onDone) {
-    run(["jump", String(target)], onDone)
-  }
+  function jump(target, onDone) { run(["jump", String(target)], onDone) }
+  function tell(text, onDone) { run(["tell", String(text)], onDone) }
+  function report(pane, onDone) { run(["report", String(pane)], onDone) }
+  function dismiss(pane, onDone) { run(["dismiss", String(pane)], onDone) }
 
   function pump() {
     if (current !== null || queue.length === 0) return
@@ -56,8 +57,8 @@ Item {
     onExited: function(exitCode, exitStatus) {
       var call = root.current
       root.current = null
-      var lines = String(procErr.text || "").trim().split("\n")
-      var message = exitCode === 0 ? "" : (lines[lines.length - 1] || "exited with " + exitCode)
+      var out = String((exitCode === 0 ? procOut.text : procErr.text) || "").trim().split("\n")
+      var message = out[out.length - 1] || (exitCode === 0 ? "" : "exited with " + exitCode)
       if (call && call.onDone) call.onDone(exitCode === 0, message)
       root.pump()
     }

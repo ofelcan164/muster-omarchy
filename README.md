@@ -4,9 +4,9 @@ An Omarchy shell plugin that brings
 [Muster](https://github.com/ofelcan164/muster)'s view of herdr agents out of
 the herdr popup and onto the desktop.
 
-**Status: M2 written, not yet tried on an Omarchy machine.** The bar widget
-and read-only panel are here and tested headless; see [the plan](docs/plan.md)
-for what is next.
+**Status: M2 and M3 written, not yet tried on an Omarchy machine.** The bar
+widget and the panel with its actions are here and tested headless; see
+[the plan](docs/plan.md) for what is next.
 
 ## The idea in one paragraph
 
@@ -30,7 +30,7 @@ be the thirteenth. What none of them has is what Muster already works out:
 
 The plan is built around that gap. See [the prior art](docs/research/prior-art.md).
 
-## What it does today (M2)
+## What it does today
 
 - **In the bar:** Muster's diamond with the count of what needs you, coloured
   by the most urgent reason (red blocked, orange landed, yellow stopped, green
@@ -41,7 +41,14 @@ The plan is built around that gap. See [the prior art](docs/research/prior-art.m
   dismissals and picked colours included), the orchestrator with what it last
   said, and one line per repo with its agents counted by status.
 - **Jumping:** click a row, or `j`/`k` then `enter`, to land on its pane.
-  herdr's window comes forward, or opens if there is none. `esc` closes.
+  herdr's window comes forward, or opens if there is none. If herdr is not
+  running at all, it is started, and you jump again once your agents are
+  back. `esc` closes.
+- **Acting, as in Muster's overlay:** `i` messages the orchestrator, `t`
+  tells it about a landed row, `x` dismisses the selected row until its
+  status changes, and `M` jumps to the orchestrator. These need a Muster
+  with `muster tell`, `report` and `dismiss`; an older one gets a notice
+  asking you to update it.
 
 It reads Muster's files and runs `muster`; it holds no herdr connection of its
 own. Only the default herdr session is shown for now.
@@ -75,7 +82,7 @@ Panel.qml            ribbon, orchestrator, repos; keys and clicks
 Data.qml             watches snapshot.json and ui.json, the stale clock
 Actions.qml          one queue of commands, each through bin/muster-omarchy
 lib/muster.js        everything worked out from Muster's files, plain JS
-bin/muster-omarchy   finds muster, runs `muster jump`, raises herdr's window
+bin/muster-omarchy   finds muster, runs its commands, raises or starts herdr
 tests/               node tests, a headless QML run, the snapshot fixture
 ```
 

@@ -5,8 +5,9 @@ import qs.Commons
 import qs.Ui
 
 // The panel that drops from the diamond: the ribbon of what needs you, the
-// orchestrator's strip, and one line per repo. Read-only apart from jumping:
-// a click or enter lands on the row's pane and brings herdr's window forward.
+// orchestrator's strip, and one line per repo. A click or enter lands on the
+// row's pane and brings herdr's window forward, and i, t, x and M do what they
+// do in Muster's overlay, through the same muster commands.
 //
 // It draws what Data works out from Muster's files and nothing else, so it
 // shows the same ribbon, orchestrator and counts as Muster's overlay.
@@ -50,11 +51,98 @@ Panel {
   readonly property int selectedIndex: targetKeys.indexOf(selectedKey)
 
   property string notice: ""
+  // Whether the notice is a failure, drawn urgent, or what an action did.
+  property bool noticeIsError: true
   property bool jumping: false
+  // The i input is open, and every key is text until enter or esc.
+  property bool composing: false
+  readonly property Item composeInput: composeField
 
   function paneFor(key) {
     if (key === "orch") return orch.found ? orch.paneId : ""
     return key.indexOf("ribbon:") === 0 ? key.slice(7) : ""
+  }
+
+  function say(ok, message) {
+    noticeIsError = !ok
+    notice = message
+  }
+
+  // The ribbon row the selection is on, or null.
+  function selectedRow() {
+    var pane = selectedKey.indexOf("ribbon:") === 0 ? selectedKey.slice(7) : ""
+    for (var i = 0; i < ribbon.length; i++)
+      if (ribbon[i].paneId === pane) return ribbon[i]
+    return null
+  }
+
+  // The landed row t reports, the overlay's rule: the selection when it is on
+  // one, else the only one there is. With several and none selected it picks
+  // nothing, because picking for you would send the wrong report.
+  function reportTarget() {
+    var landed = []
+    for (var i = 0; i < ribbon.length; i++)
+      if (ribbon[i].reason === "landed") landed.push(ribbon[i])
+    var sel = selectedRow()
+    if (sel && sel.reason === "landed") return sel
+    return landed.length === 1 ? landed[0] : null
+  }
+
+  function textKey(text) {
+    if (text === "i") startCompose()
+    else if (text === "t") report()
+    else if (text === "M") {
+      if (orch.found) jumpTo("orchestrator")
+      else say(false, "no orchestrator marked, so there is nowhere to go")
+    }
+  }
+
+  function startCompose() {
+    if (!orch.found) {
+      say(false, "no orchestrator marked, so there is nobody to tell")
+      return
+    }
+    notice = ""
+    composeField.text = ""
+    composing = true
+    composeField.forceActiveFocus()
+  }
+
+  function endCompose() {
+    composing = false
+    keyCatcher.forceActiveFocus()
+  }
+
+  function sendCompose() {
+    var text = composeField.text.trim()
+    endCompose()
+    if (text === "") return
+    actions.tell(text, say)
+  }
+
+  function report() {
+    var row = reportTarget()
+    if (!row) {
+      say(false, "nothing to report: no landed row is selected")
+      return
+    }
+    if (!orch.found) {
+      say(false, "no orchestrator marked, so there is nobody to tell")
+      return
+    }
+    actions.report(row.paneId, say)
+  }
+
+  // x takes the row off the ribbon until its status changes. The row goes
+  // when Muster rewrites ui.json and the watch sees it, not before, so the
+  // panel never shows a dismissal that did not happen.
+  function dismiss() {
+    var row = selectedRow()
+    if (!row) {
+      say(false, "x dismisses a row that needs you: select one first")
+      return
+    }
+    actions.dismiss(row.paneId, function(ok, message) { if (!ok) say(false, message) })
   }
 
   function move(dy) {
@@ -79,13 +167,14 @@ Panel {
     actions.jump(pane, function(ok, message) {
       musterPanel.jumping = false
       if (ok) musterPanel.close()
-      else musterPanel.notice = message
+      else musterPanel.say(false, message)
     })
   }
 
   onOpenedChanged: if (opened) {
     selectedKey = ""
     notice = ""
+    composing = false
     if (muster) {
       muster.nowMs = Date.now()
       muster.refresh()
@@ -112,11 +201,14 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      blocked: musterPanel.composing
 
       onMoveRequested: function(dx, dy) { if (dy !== 0) musterPanel.move(dy) }
       onActivateRequested: musterPanel.activate()
       onCloseRequested: musterPanel.close()
       onTabRequested: function(direction) { musterPanel.switchPanel(direction) }
+      onDeleteRequested: musterPanel.dismiss()
+      onTextKey: function(text) { musterPanel.textKey(text) }
 
       Flickable {
         id: flick
@@ -529,14 +621,30 @@ Panel {
             }
           }
 
-          // A failed command's last line, the overlay's notice line.
+          // i: a message for the orchestrator. Enter sends it, esc drops it.
+          TextField {
+            id: composeField
+            width: parent.width
+            visible: musterPanel.composing
+            placeholderText: "message the orchestrator"
+            color: musterPanel.foreground
+            font.family: musterPanel.fontFamily
+            font.pixelSize: Style.font.body
+            onAccepted: musterPanel.sendCompose()
+            Keys.onEscapePressed: function(event) {
+              event.accepted = true
+              musterPanel.endCompose()
+            }
+          }
+
+          // The overlay's notice line: why a command failed, or what it did.
           Text {
             width: parent.width
             visible: text !== ""
             text: musterPanel.notice
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
-            color: musterPanel.urgent
+            color: musterPanel.noticeIsError ? musterPanel.urgent : musterPanel.dim
             font.family: musterPanel.fontFamily
             font.pixelSize: Style.font.bodySmall
           }
@@ -544,7 +652,9 @@ Panel {
           Text {
             width: parent.width
             visible: musterPanel.targetKeys.length > 0
-            text: "j/k move · enter jumps · esc closes"
+            text: musterPanel.composing ? "enter sends · esc cancels"
+              : "j/k move · enter jumps · i tell · t report · x dismiss · M orchestrator · esc closes"
+            wrapMode: Text.Wrap
             textFormat: Text.PlainText
             color: Qt.darker(musterPanel.foreground, 2)
             font.family: musterPanel.fontFamily

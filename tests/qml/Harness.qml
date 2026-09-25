@@ -186,6 +186,75 @@ Item {
       check(!w.opened, "escape closes")
     },
 
+    function actionKeys() {
+      var w = widgets.fresh
+      w.open()
+      var p = panelOf(w)
+      var k = keysOf(w)
+      var before = StubLog.processes.length
+
+      k.press(0, "t", 0)
+      var run = lastProcess()
+      eq(StubLog.processes.length, before + 1, "t starts a process")
+      eq(run.command.slice(-2), ["report", "w2:p1"], "t with nothing selected reports the only landed row")
+      run.process.finish(0, "told the orchestrator api landed\n", "")
+      eq(p.notice, "told the orchestrator api landed", "t shows what it told")
+      check(!p.noticeIsError, "a report that worked is not drawn as an error")
+      check(w.opened, "reporting keeps the panel open")
+
+      k.press(0, "x", 0)
+      check(p.noticeIsError && p.notice.indexOf("select one first") !== -1, "x with nothing selected says so")
+      eq(StubLog.processes.length, before + 1, "and runs nothing")
+
+      k.press(Qt.Key_Down, "", 0)
+      k.press(0, "x", 0)
+      run = lastProcess()
+      eq(run.command.slice(-2), ["dismiss", "w2:p1"], "x dismisses the selected row")
+      run.process.finish(1, "", "muster dismiss: w2:p1 has no row in the ribbon to dismiss")
+      eq(p.notice, "muster dismiss: w2:p1 has no row in the ribbon to dismiss", "a failed dismiss says why")
+      check(p.noticeIsError, "in the error colour")
+
+      k.press(0, "M", 0)
+      run = lastProcess()
+      eq(run.command.slice(-2), ["jump", "orchestrator"], "M jumps to the orchestrator")
+      run.process.finish(0, "", "")
+      check(!w.opened, "and closes once there")
+    },
+
+    function compose() {
+      var w = widgets.fresh
+      w.open()
+      var p = panelOf(w)
+      var k = keysOf(w)
+      var before = StubLog.processes.length
+
+      k.press(0, "i", 0)
+      check(p.composing, "i opens the message input")
+      check(k.blocked, "the panel's keys stand aside while it is open")
+      k.press(0, "j", 0)
+      eq(p.selectedKey, "", "j typed into the input does not move the selection")
+
+      p.composeInput.text = "  pull main and rerun  "
+      p.composeInput.accepted()
+      check(!p.composing, "enter closes the input")
+      check(!k.blocked, "and gives the keys back")
+      var run = lastProcess()
+      eq(run.command.slice(-2), ["tell", "pull main and rerun"], "enter sends the message, trimmed")
+      run.process.finish(0, "sent to the orchestrator\n", "")
+      eq(p.notice, "sent to the orchestrator", "and says it was sent")
+
+      k.press(0, "i", 0)
+      p.composeInput.text = "never mind"
+      p.endCompose()
+      check(!p.composing, "esc closes the input")
+      eq(StubLog.processes.length, before + 1, "without sending")
+
+      k.press(0, "i", 0)
+      p.composeInput.accepted()
+      eq(StubLog.processes.length, before + 1, "an empty message is not sent")
+      w.close()
+    },
+
     function snapshotChanges() {
       files.write(dirs.fresh + "/snapshot.json", fixtureQuiet)
       var fv = fileView(dirs.fresh + "/snapshot.json")

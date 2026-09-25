@@ -5,11 +5,14 @@
 # forward, which Muster cannot do from inside herdr.
 #
 #   muster-omarchy [--muster CMD] [--state-dir DIR] jump <pane-id|orchestrator>
+#   muster-omarchy [--muster CMD] [--state-dir DIR] tell <text>
+#   muster-omarchy [--muster CMD] [--state-dir DIR] report|dismiss <pane-id>
 #   muster-omarchy raise
 #   muster-omarchy which [--muster CMD]
 #
 # Errors are one line on stderr and a non-zero exit: the panel shows that line.
-# Only the default herdr session is handled until Muster has --session (M1).
+# What a command did, when it says, is the last line on stdout.
+# Only the default herdr session is handled until Muster has --session.
 
 set -uo pipefail
 
@@ -151,31 +154,84 @@ cmd_raise() {
     return 0
   fi
 
+  launch_herdr
+}
+
+# launch_herdr opens a terminal on the default session, starting its server if
+# none is running.
+launch_herdr() {
   command -v omarchy-launch-terminal-herdr >/dev/null 2>&1 ||
     die "no herdr window to bring forward, and omarchy-launch-terminal-herdr is not installed"
   setsid omarchy-launch-terminal-herdr >/dev/null 2>&1 &
   disown
 }
 
-cmd_jump() {
-  local target="${1-}"
-  # A herdr pane id, or "orchestrator", Muster's own name for one. It goes
-  # over argv, never through a shell, so the check only keeps out what could
-  # read as a flag or is plainly not an id.
-  [[ $target =~ ^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,63}$ ]] || die "not a pane id: $target"
+# check_pane refuses anything that is not a herdr pane id, or "orchestrator",
+# Muster's own name for one. Ids go over argv, never through a shell, so this
+# only keeps out what could read as a flag or is plainly not an id.
+check_pane() {
+  [[ ${1-} =~ ^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,63}$ ]] || die "not a pane id: ${1-}"
+}
 
+# What the last run_muster failure was: DOWN is true when herdr's socket could
+# not be reached, and MESSAGE is the one line worth showing.
+DOWN=false
+MESSAGE=""
+
+# run_muster runs one muster command with the state dir in front. Its stdout
+# passes through; a failure sets DOWN and MESSAGE and returns non-zero.
+run_muster() {
   local muster
   muster=$(resolve_muster) || die "muster not found: set this widget's muster setting to its path"
 
   local -a args=()
   [[ -n $STATE_DIR ]] && args+=(--state-dir "$(expand_home "$STATE_DIR")")
 
-  local err
-  if ! err=$("$muster" "${args[@]}" jump "$target" 2>&1 >/dev/null); then
-    err=$(printf '%s' "$err" | tail -n 1)
-    die "${err:-muster jump failed}"
+  # stderr is captured and stdout goes where ours does, through fd 3.
+  local err status
+  { err=$("$muster" "${args[@]}" "$@" 2>&1 1>&3 3>&-); status=$?; } 3>&1
+  ((status == 0)) && return 0
+
+  DOWN=false
+  if [[ $err == *"unknown command"* ]]; then
+    # muster prints its whole usage after this, so its last line says nothing.
+    MESSAGE="this needs a newer Muster than the one installed: run the Update Muster action in herdr"
+  elif [[ $err == *"dial "*"connect:"* ]]; then
+    DOWN=true
+    MESSAGE="herdr is not running"
+  else
+    MESSAGE=$(printf '%s' "$err" | tail -n 1)
+    MESSAGE=${MESSAGE:-muster $1 failed}
+  fi
+  return 1
+}
+
+cmd_jump() {
+  local target="${1-}"
+  check_pane "$target"
+  if ! run_muster jump "$target" >/dev/null; then
+    # With no server there is nothing to jump to, but opening herdr is what
+    # asking to go there means. The pane ids belong to the server that went
+    # away, so say how to finish rather than claiming the jump happened.
+    if $DOWN; then
+      launch_herdr
+      die "herdr was not running, so it is starting. Jump again once your agents are back."
+    fi
+    die "$MESSAGE"
   fi
   cmd_raise
+}
+
+cmd_tell() {
+  local text="${1-}"
+  [[ -n ${text//[[:space:]]/} ]] || die "nothing to send"
+  run_muster tell "$text" || die "$MESSAGE"
+}
+
+cmd_pane_action() {
+  local action=$1 pane="${2-}"
+  check_pane "$pane"
+  run_muster "$action" "$pane" || die "$MESSAGE"
 }
 
 cmd_which() {
@@ -201,7 +257,9 @@ done
 
 case ${1-} in
 jump) cmd_jump "${2-}" ;;
+tell) cmd_tell "${2-}" ;;
+report | dismiss) cmd_pane_action "$1" "${2-}" ;;
 raise) cmd_raise ;;
 which) cmd_which ;;
-*) die "usage: muster-omarchy [--muster CMD] [--state-dir DIR] jump <pane-id|orchestrator> | raise | which" ;;
+*) die "usage: muster-omarchy [--muster CMD] [--state-dir DIR] jump <pane-id|orchestrator> | tell <text> | report <pane-id> | dismiss <pane-id> | raise | which" ;;
 esac

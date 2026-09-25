@@ -183,6 +183,22 @@ Decisions the plan left open:
 - **Done when:** each action changes what Muster's overlay shows, and vice
   versa, within one refresh.
 
+### M3 implementation notes
+
+Built on the M1 commands in `ofelcan164/muster#18` (M0 is `#17`), and not
+yet run on an Omarchy machine.
+
+- **Which row `t` reports** is the overlay's rule: the selected row when it is
+  landed, else the only landed row, else nothing, with the overlay's notice.
+- **`x` waits for the file.** The row leaves when Muster rewrites `ui.json`
+  and the watch sees it, so the panel never shows a dismissal that failed.
+- **A Muster from before M1** answers `unknown command`. The panel says to
+  run the Update Muster action rather than showing Muster's usage text.
+- **herdr not running.** Every command reports "herdr is not running" rather
+  than a socket error. A jump also opens herdr with
+  `omarchy-launch-terminal-herdr`, and says to jump again once the agents
+  are back: the pane ids belong to the server that went away.
+
 ## M4: `muster install --omarchy` (muster repo)
 
 - **Tasks:**
