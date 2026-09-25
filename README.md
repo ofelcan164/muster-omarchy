@@ -46,9 +46,8 @@ The plan is built around that gap. See [the prior art](docs/research/prior-art.m
   back. `esc` closes.
 - **Acting, as in Muster's overlay:** `i` messages the orchestrator, `t`
   tells it about a landed row, `x` dismisses the selected row until its
-  status changes, and `M` jumps to the orchestrator. These need a Muster
-  with `muster tell`, `report` and `dismiss`; an older one gets a notice
-  asking you to update it.
+  status changes, and `M` jumps to the orchestrator. These need Muster
+  0.3.0 or newer; an older one gets a notice asking you to update it.
 
 It reads Muster's files and runs `muster`; it holds no herdr connection of its
 own. Only the default herdr session is shown for now.
@@ -57,7 +56,8 @@ own. Only the default herdr session is shown for now.
 
 Two installs, one in each tool, in this order:
 
-1. **Muster, in herdr.** Install it the way you install any herdr plugin:
+1. **Muster 0.3.0 or newer, in herdr.** Install it the way you install any
+   herdr plugin, or run its **Update Muster** action if you have an older one:
 
    ```bash
    herdr plugin install ofelcan164/muster

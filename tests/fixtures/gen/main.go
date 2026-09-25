@@ -16,6 +16,7 @@ func main() {
 	ago := func(d time.Duration) time.Time { return gen.Add(-d) }
 
 	snap := model.Snapshot{
+		Version:      model.SnapshotVersion, // as musterd writes it, from Muster 0.3.0
 		GeneratedAt:  gen,
 		DaemonPID:    4242,
 		HerdrVersion: "0.9.0",

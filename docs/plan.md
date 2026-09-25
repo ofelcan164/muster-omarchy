@@ -71,7 +71,7 @@ Each spike answers one question with a command, and its result goes into
     hand would be a third way in, around Omarchy's marketplace. The Omarchy
     side is this plugin. `badge --json` stays for any bar that wants it.
 - **Done when:** the count matches the herdr tab bar badge.
-- **Status:** in review, `ofelcan164/muster#17`.
+- **Status:** released in Muster 0.3.0.
 
 ## M1: CLI for an outside caller (muster repo)
 
@@ -92,6 +92,8 @@ Each spike answers one question with a command, and its result goes into
 - **Done when:** each of `jump <pane>`, `jump orchestrator`, `tell`, `report`,
   `dismiss` works from a plain shell with only `--state-dir`, with no herdr
   environment.
+- **Status:** released in Muster 0.3.0, except `--session`, which waits on
+  S1.
 
 ## M2: bar widget and read-only panel (this repo)
 
@@ -188,8 +190,8 @@ Decisions the plan left open:
 
 ### M3 implementation notes
 
-Built on the M1 commands in `ofelcan164/muster#18` (M0 is `#17`), and not
-yet run on an Omarchy machine.
+Built on the M1 commands, released in Muster 0.3.0, and not yet run on an
+Omarchy machine.
 
 - **Which row `t` reports** is the overlay's rule: the selected row when it is
   landed, else the only landed row, else nothing, with the overlay's notice.

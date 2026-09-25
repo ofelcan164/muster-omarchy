@@ -45,12 +45,18 @@ test("parseTime treats Go's zero time and garbage as never", () => {
 
 test("parseSnapshot reads the fixture", () => {
   const s = snapshot()
-  assert.equal(s.version, 0, "a snapshot without snapshot_version reads as 0")
+  assert.equal(s.version, 1, "Muster 0.3.0 writes snapshot_version 1")
   assert.equal(s.generatedAtMs, GENERATED)
   assert.equal(s.repos.length, 3)
   assert.equal(s.attention.length, 5)
   assert.equal(s.orchestrator.found, true)
   assert.equal(s.orchestrator.paneId, "w1:p1")
+})
+
+test("a snapshot from before Muster 0.3.0, with no snapshot_version, reads as 0", () => {
+  const s = snapshot((r) => { delete r.snapshot_version })
+  assert.equal(s.version, 0)
+  assert.equal(M.isNewer(s), false, "and is drawn, not refused")
 })
 
 test("parseSnapshot refuses what musterd never writes", () => {

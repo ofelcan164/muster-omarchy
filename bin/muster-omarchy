@@ -195,7 +195,7 @@ run_muster() {
   DOWN=false
   if [[ $err == *"unknown command"* ]]; then
     # muster prints its whole usage after this, so its last line says nothing.
-    MESSAGE="this needs a newer Muster than the one installed: run the Update Muster action in herdr"
+    MESSAGE="this needs Muster 0.3.0 or newer: run the Update Muster action in herdr"
   elif [[ $err == *"dial "*"connect:"* ]]; then
     DOWN=true
     MESSAGE="herdr is not running"

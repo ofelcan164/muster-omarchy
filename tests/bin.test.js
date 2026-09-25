@@ -159,7 +159,7 @@ test("an action on a muster too old for it asks for an update", () => {
   const s = sandbox()
   const res = s.run(["tell", "hi"], { MUSTER_FAIL: 'muster: unknown command "tell"\nmuster — the Muster client\n\nusage:' })
   assert.equal(res.status, 1)
-  assert.equal(res.stderr.trim(), "this needs a newer Muster than the one installed: run the Update Muster action in herdr")
+  assert.equal(res.stderr.trim(), "this needs Muster 0.3.0 or newer: run the Update Muster action in herdr")
 })
 
 test("an action with herdr not running says so and starts nothing", () => {
