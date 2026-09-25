@@ -1,10 +1,11 @@
 # muster-omarchy
 
-Planning and research for an Omarchy shell plugin that brings
+An Omarchy shell plugin that brings
 [Muster](https://github.com/ofelcan164/muster)'s view of herdr agents out of
 the herdr popup and onto the desktop.
 
-**Status: planning only.** This repository holds Markdown and nothing else.
+**Status: M2 in progress** (bar widget and read-only panel, see
+[the plan](docs/plan.md)). Not yet tried on an Omarchy machine.
 
 ## The idea in one paragraph
 

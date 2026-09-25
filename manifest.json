@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.ofelcan164.muster",
+  "name": "Muster",
+  "version": "0.1.0",
+  "author": "Oscar Felcan",
+  "license": "MIT",
+  "homepage": "https://github.com/ofelcan164/muster-omarchy",
+  "description": "Muster's view of your herdr agents in the Omarchy bar: what needs you, ranked, the orchestrator's last word, and every repo at a glance.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Muster",
+    "description": "What needs you across every herdr agent, read from Muster's snapshot. Click a row to land on its pane.",
+    "category": "AI",
+    "aliases": ["muster", "herdr", "agents", "orchestrator"],
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "stateDir": "",
+      "muster": "muster"
+    },
+    "schema": [
+      { "key": "stateDir", "type": "path", "label": "Muster state directory", "defaultValue": "", "description": "Where musterd writes snapshot.json. Empty means ~/.local/state/herdr/plugins/muster." },
+      { "key": "muster", "type": "string", "label": "muster binary", "defaultValue": "muster", "description": "The muster command to run. A bare name is looked up on PATH, then in the tab bar entry muster install wrote to your herdr config." }
+    ]
+  }
+}
