@@ -1,0 +1,242 @@
+{
+  "generated_at": "2026-09-25T12:00:00.123456789+02:00",
+  "daemon_pid": 4242,
+  "herdr_version": "0.9.0",
+  "repos": [
+    {
+      "key": "acme/api",
+      "name": "api",
+      "display": "api",
+      "root": "/src/api",
+      "branch": "main",
+      "is_git": true,
+      "color_index": 12,
+      "sigil": "✦",
+      "grid_slot": 0,
+      "workspace_ids": [
+        "w1"
+      ],
+      "agents": [
+        {
+          "pane_id": "w1:p1",
+          "workspace_id": "w1",
+          "tab_id": "t1",
+          "name": "orchestrator",
+          "kind": "claude",
+          "status": "idle",
+          "focused": false,
+          "task_source": "none",
+          "landed_at": "0001-01-01T00:00:00Z",
+          "status_since": "2026-09-25T11:57:00.123456789+02:00",
+          "state_change_seq": 0,
+          "age_known": true,
+          "is_orchestrator": true
+        },
+        {
+          "pane_id": "w1:p2",
+          "workspace_id": "w1",
+          "tab_id": "t1",
+          "name": "fixer",
+          "kind": "codex",
+          "status": "blocked",
+          "focused": false,
+          "task": "fix the flaky test",
+          "task_source": "orchestrator",
+          "landed_at": "0001-01-01T00:00:00Z",
+          "question": "Allow rm -rf build/?",
+          "status_since": "2026-09-25T11:58:30.123456789+02:00",
+          "state_change_seq": 0,
+          "age_known": true
+        },
+        {
+          "pane_id": "w1:p3",
+          "workspace_id": "w1",
+          "tab_id": "t1",
+          "name": "docs",
+          "kind": "claude",
+          "status": "working",
+          "focused": false,
+          "task_source": "self_report",
+          "landed_at": "0001-01-01T00:00:00Z",
+          "status_since": "2026-09-25T11:59:20.123456789+02:00",
+          "state_change_seq": 0,
+          "age_known": true
+        }
+      ],
+      "other_panes": [
+        {
+          "pane_id": "w1:p9",
+          "workspace_id": "w1",
+          "label": "dev server",
+          "command": "npm run dev"
+        }
+      ]
+    },
+    {
+      "key": "acme/web",
+      "name": "web",
+      "display": "web",
+      "root": "/src/web",
+      "branch": "feature/login",
+      "is_git": true,
+      "color_index": 4,
+      "sigil": "◆",
+      "grid_slot": 1,
+      "workspace_ids": [
+        "w2"
+      ],
+      "agents": [
+        {
+          "pane_id": "w2:p1",
+          "workspace_id": "w2",
+          "tab_id": "t2",
+          "name": "login",
+          "kind": "claude",
+          "status": "idle",
+          "focused": false,
+          "task": "wire the login form",
+          "task_source": "orchestrator",
+          "depends_on": "api#412",
+          "depends_on_repo": "acme/api",
+          "landed_at": "2026-09-25T11:50:00.123456789+02:00",
+          "status_since": "2026-09-25T10:00:00.123456789+02:00",
+          "state_change_seq": 0,
+          "age_known": true
+        },
+        {
+          "pane_id": "w2:p2",
+          "workspace_id": "w2",
+          "tab_id": "t2",
+          "name": "styles",
+          "kind": "claude",
+          "status": "done",
+          "focused": false,
+          "task_source": "terminal_title",
+          "landed_at": "0001-01-01T00:00:00Z",
+          "status_since": "2026-09-25T11:55:00.123456789+02:00",
+          "state_change_seq": 0,
+          "age_known": false
+        }
+      ],
+      "other_panes": null
+    },
+    {
+      "key": "/tmp/scratch",
+      "name": "scratch",
+      "display": "scratch",
+      "root": "/tmp/scratch",
+      "is_git": false,
+      "color_index": -1,
+      "sigil": "○",
+      "grid_slot": -1,
+      "workspace_ids": [
+        "w3"
+      ],
+      "agents": [],
+      "other_panes": null
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "w1",
+      "number": 1,
+      "label": "api"
+    },
+    {
+      "id": "w2",
+      "number": 2,
+      "label": "web"
+    },
+    {
+      "id": "w3",
+      "number": 3,
+      "label": "scratch"
+    }
+  ],
+  "attention": [
+    {
+      "rank": 1,
+      "reason": "blocked",
+      "repo_key": "acme/api",
+      "pane_id": "w1:p2",
+      "agent": "fixer",
+      "status": "blocked",
+      "age_ns": 90000000000,
+      "age_known": true,
+      "detail": "Allow rm -rf build/?"
+    },
+    {
+      "rank": 2,
+      "reason": "landed",
+      "repo_key": "acme/web",
+      "pane_id": "w2:p1",
+      "agent": "login",
+      "status": "idle",
+      "age_ns": 7200000000000,
+      "age_known": true,
+      "detail": "api#412 landed, nobody moved",
+      "dependents": [
+        "web/login"
+      ]
+    },
+    {
+      "rank": 3,
+      "reason": "process_stopped",
+      "repo_key": "acme/api",
+      "pane_id": "w1:p9",
+      "agent": "dev server",
+      "status": "unknown",
+      "age_ns": 0,
+      "age_known": false,
+      "detail": "npm run dev\nexited"
+    },
+    {
+      "rank": 4,
+      "reason": "done_unseen",
+      "repo_key": "acme/web",
+      "pane_id": "w2:p2",
+      "agent": "styles",
+      "status": "done",
+      "age_ns": 300000000000,
+      "age_known": false,
+      "detail": ""
+    },
+    {
+      "rank": 5,
+      "reason": "idle_never_done",
+      "repo_key": "acme/api",
+      "pane_id": "w1:p1",
+      "agent": "orchestrator",
+      "status": "idle",
+      "age_ns": 180000000000,
+      "age_known": true,
+      "detail": "idle since its last turn"
+    }
+  ],
+  "orchestrator": {
+    "found": true,
+    "pane_id": "w1:p1",
+    "name": "orchestrator",
+    "status": "idle",
+    "last_message": "coordinate the login work",
+    "last_said": "api#412 is merged.\nTelling web to pick it up next.",
+    "said_at": "2026-09-25T11:59:15.123456789+02:00",
+    "detected_by": "token",
+    "status_since": "2026-09-25T11:57:00.123456789+02:00"
+  },
+  "focused_workspace": "w1",
+  "focused_pane": "w1:p3",
+  "previous_agent": "w2:p1",
+  "focus_history": [
+    "w1:p3",
+    "w2:p1"
+  ],
+  "counts": {
+    "repos": 3,
+    "workspaces": 3,
+    "agents": 5,
+    "needs_you": 5,
+    "working": 1,
+    "non_agents": 1
+  }
+}
