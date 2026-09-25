@@ -44,11 +44,14 @@ Item {
   readonly property bool readable: fileState === "loaded" && !newer
 
   readonly property var barView: Muster.barView(fileState, snapshot, ui, nowMs)
-  readonly property string headerMeta: Muster.headerMeta(fileState, snapshot, ui, nowMs)
+  // What the panel draws, piece by piece as the overlay does: the title
+  // line, the ribbon and its rule's colour, the grid's tiles, the strip.
+  readonly property var header: readable ? Muster.headerView(snapshot, ui) : ({ counts: "", needsYou: 0 })
   readonly property var ribbon: readable ? Muster.ribbonView(snapshot, ui) : []
+  readonly property string accent: readable ? Muster.attentionAccent(snapshot, ui) : Muster.DIM
   readonly property int needsYou: readable ? Muster.needsYou(snapshot, ui) : 0
+  readonly property var tiles: readable ? Muster.tilesView(snapshot, ui, nowMs) : []
   readonly property var orchestrator: readable ? Muster.orchestratorView(snapshot, ui, nowMs) : ({ found: false })
-  readonly property var repos: readable ? Muster.reposView(snapshot, ui) : []
 
   // Why there is nothing, or nothing trustworthy, to show. Empty when the
   // snapshot is current.

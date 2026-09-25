@@ -127,12 +127,18 @@ Item {
       var p = panelOf(w)
       eq(p.ribbon.length, 4, "the panel's ribbon")
       eq(p.ribbon[0].paneId, "w2:p1", "the dismissed row is gone")
-      eq(p.moreRows, 0, "nothing beyond the ribbon")
+      eq(p.header, { counts: "3 workspaces · 5 agents", needsYou: 4 }, "the title line counts what is undismissed")
+      eq(p.muster.accent, "#fe8019", "the NEEDS YOU rule takes the top undismissed row's colour")
       eq(p.orch.found, true, "orchestrator found")
       eq(p.orch.who, "API", "orchestrator named by its repo")
       eq(p.orch.color, "#fb4934", "the colour picked in ui.json wins")
-      eq(p.repos.length, 3, "one row per repo")
-      eq(p.targetKeys, ["ribbon:w2:p1", "ribbon:w1:p9", "ribbon:w2:p2", "ribbon:w1:p1", "orch"], "what j/k walk")
+      // ui.json sorts a-z: api's agents by name, then web's, the empty
+      // workspace last.
+      eq(p.tiles.map(function(t) { return t.key }),
+         ["pane:w1:p3", "pane:w1:p2", "pane:w1:p1", "pane:w2:p1", "pane:w2:p2", "ws:w3"], "one tile per agent and empty workspace")
+      eq(p.targetKeys, ["ribbon:w2:p1", "ribbon:w1:p9", "ribbon:w2:p2", "ribbon:w1:p1",
+                        "tile:pane:w1:p3", "tile:pane:w1:p2", "tile:pane:w1:p1", "tile:pane:w2:p1",
+                        "tile:pane:w2:p2", "tile:ws:w3", "orch"], "what j/k walk: ribbon, tiles, strip")
       eq(p.muster.problem, "", "no problem to report")
     },
 
@@ -142,10 +148,18 @@ Item {
       var k = keysOf(w)
       k.press(Qt.Key_Down, "", 0)
       eq(p.selectedKey, "ribbon:w2:p1", "down selects the first row")
-      for (var i = 0; i < 6; i++) k.press(0, "j", 0)
-      eq(p.selectedKey, "orch", "j stops at the orchestrator")
+      for (var i = 0; i < 10; i++) k.press(0, "j", 0)
+      eq(p.selectedKey, "orch", "j reaches the orchestrator last")
+      k.press(0, "j", 0)
+      eq(p.selectedKey, "ribbon:w2:p1", "and wraps round to the top")
       k.press(0, "k", 0)
-      eq(p.selectedKey, "ribbon:w1:p1", "k moves back up")
+      eq(p.selectedKey, "orch", "k wraps back")
+      k.press(0, "G", 0)
+      eq(p.selectedKey, "orch", "G is the last target")
+      k.press(0, "g", 0)
+      eq(p.selectedKey, "ribbon:w2:p1", "g is the first")
+      for (var n = 0; n < 6; n++) k.press(0, "j", 0)
+      eq(p.selectedKey, "tile:pane:w1:p1", "j walks into the tiles")
 
       k.press(Qt.Key_Return, "", 0)
       var run = lastProcess()
@@ -179,11 +193,24 @@ Item {
       var p = panelOf(w)
       w.open()
       eq(p.selectedKey, "", "reopening clears the selection")
+      var before = StubLog.processes.length
       keysOf(w).press(Qt.Key_Return, "", 0)
-      eq(lastProcess().command[lastProcess().command.length - 1], "w2:p1", "enter with nothing selected takes the top row")
-      lastProcess().process.finish(0, "", "")
+      eq(StubLog.processes.length, before, "enter with nothing selected goes nowhere, as in the overlay")
+      keysOf(w).press(0, "2", 0)
+      eq(lastProcess().command[lastProcess().command.length - 1], "w1:p9", "a digit jumps to that ribbon row")
+      lastProcess().process.finish(1, "", "muster jump: pane gone")
+
+      p.selectedKey = "tile:ws:w3"
+      keysOf(w).press(Qt.Key_Return, "", 0)
+      eq(lastProcess().command.slice(-2), ["jump", "ws:w3"], "an empty workspace's tile focuses the workspace")
+      lastProcess().process.finish(1, "", "muster jump: gone")
+
+      keysOf(w).press(0, "e", 0)
+      check(p.sayMore, "e expands what the orchestrator said")
       keysOf(w).press(Qt.Key_Escape, "", 0)
-      check(!w.opened, "escape closes")
+      check(!p.sayMore && w.opened, "esc folds it first")
+      keysOf(w).press(Qt.Key_Escape, "", 0)
+      check(!w.opened, "then closes")
     },
 
     function actionKeys() {
@@ -199,11 +226,10 @@ Item {
       eq(run.command.slice(-2), ["report", "w2:p1"], "t with nothing selected reports the only landed row")
       run.process.finish(0, "told the orchestrator api landed\n", "")
       eq(p.notice, "told the orchestrator api landed", "t shows what it told")
-      check(!p.noticeIsError, "a report that worked is not drawn as an error")
       check(w.opened, "reporting keeps the panel open")
 
       k.press(0, "x", 0)
-      check(p.noticeIsError && p.notice.indexOf("select one first") !== -1, "x with nothing selected says so")
+      check(p.notice.indexOf("select one first") !== -1, "x with nothing selected says so")
       eq(StubLog.processes.length, before + 1, "and runs nothing")
 
       k.press(Qt.Key_Down, "", 0)
@@ -212,7 +238,13 @@ Item {
       eq(run.command.slice(-2), ["dismiss", "w2:p1"], "x dismisses the selected row")
       run.process.finish(1, "", "muster dismiss: w2:p1 has no row in the ribbon to dismiss")
       eq(p.notice, "muster dismiss: w2:p1 has no row in the ribbon to dismiss", "a failed dismiss says why")
-      check(p.noticeIsError, "in the error colour")
+
+      p.selectedKey = "tile:pane:w2:p1"
+      k.press(0, "x", 0)
+      check(p.notice.indexOf("select one first") !== -1, "x on a tile says it takes a ribbon row")
+      k.press(0, "t", 0)
+      eq(lastProcess().command.slice(-2), ["report", "w2:p1"], "t on the landed agent's tile reports it")
+      lastProcess().process.finish(0, "told the orchestrator api landed\n", "")
 
       k.press(0, "M", 0)
       run = lastProcess()
@@ -271,7 +303,8 @@ Item {
       w.open()
       var p = panelOf(w)
       eq(p.ribbon.length, 0, "an empty ribbon")
-      eq(p.targetKeys, ["orch"], "only the orchestrator to walk")
+      eq(p.targetKeys[0], "tile:pane:w1:p3", "the walk starts at the tiles")
+      eq(p.header.needsYou, 0, "nothing in the title line")
       w.close()
     },
 

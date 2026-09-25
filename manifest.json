@@ -6,7 +6,7 @@
   "author": "Oscar Felcan",
   "license": "MIT",
   "homepage": "https://github.com/ofelcan164/muster-omarchy",
-  "description": "Muster's view of your herdr agents in the Omarchy bar: what needs you, ranked, the orchestrator's last word, and every repo at a glance.",
+  "description": "Muster's overlay in the Omarchy bar: what needs you across every herdr agent, ranked, each agent's tile, and the orchestrator's last word.",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "BarWidget.qml"

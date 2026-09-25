@@ -1,100 +1,127 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
+import "lib/muster.js" as Muster
 
-// The panel that drops from the diamond: the ribbon of what needs you, the
-// orchestrator's strip, and one line per repo. A click or enter lands on the
-// row's pane and brings herdr's window forward, and i, t, x and M do what they
-// do in Muster's overlay, through the same muster commands.
+// The panel that drops from the diamond: Muster's overlay, drawn the way the
+// overlay draws it. The title line, the ribbon of what needs you, one tile per
+// agent and per empty workspace, and the orchestrator strip pinned to the
+// bottom, on the overlay's own dark surface and in its colours, so the panel
+// and the popup in herdr read as the same screen.
 //
-// It draws what Data works out from Muster's files and nothing else, so it
-// shows the same ribbon, orchestrator and counts as Muster's overlay.
+// A click or enter lands on the selection, and i, t, x, e, M, g, G and 1-9 do
+// what they do in the overlay, through the same muster commands.
 Panel {
   id: musterPanel // not `root`: inside a Component, `root` would resolve to that
   moduleName: "io.github.ofelcan164.muster"
-  ipcTarget: "io.github.ofelcan164.muster"
-  manageIpc: true
+  // Nested in a bar widget: the shell reaches it through BarWidget.qml's
+  // open(), close() and toggle(), so it registers no IPC target of its own.
+  manageIpc: false
 
   // Injected by BarWidget.
   property var anchorItem: null
   property var hostWidget: null
   property var muster: null
 
-  readonly property color foreground: bar ? bar.foreground : Color.foreground
-  readonly property color dim: Qt.darker(foreground, 1.55)
-  readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property color hoverFill: Style.hoverFillFor(foreground, Color.accent)
-  readonly property color selectedFill: Style.selectedFillFor(foreground, Color.accent)
-  // Text on a reason badge: the overlay's own background, since the accents
-  // are the overlay's too and are bright on any theme.
-  readonly property color badgeText: "#1d2021"
+  readonly property font mono: Qt.font({ family: fontFamily, pixelSize: Style.font.body })
+  readonly property font monoBold: Qt.font({ family: fontFamily, pixelSize: Style.font.body, bold: true })
+  // One terminal cell, which the overlay's half-block bars and indents are
+  // measured in, and one terminal line.
+  readonly property real cell: cellMetrics.advanceWidth
+  readonly property real lineHeight: cellMetrics.height
 
   readonly property bool readable: !!muster && muster.readable
   readonly property var ribbon: muster ? muster.ribbon : []
+  readonly property var tiles: muster ? muster.tiles : []
   readonly property var orch: muster ? muster.orchestrator : ({ found: false })
-  readonly property var repos: muster ? muster.repos : []
-  readonly property int moreRows: muster ? Math.max(0, muster.needsYou - ribbon.length) : 0
+  readonly property var header: muster ? muster.header : ({ counts: "", needsYou: 0 })
 
-  // What j/k walk and enter lands on: the ribbon rows, then the orchestrator.
-  // The selection is kept by key, not by position, so a snapshot that arrives
-  // while the panel is open does not move it onto another row.
+  // What j/k walk and enter lands on, in the overlay's order: the ribbon rows,
+  // the tiles, then the strip. The selection is kept by key, not position, so
+  // a snapshot that arrives while the panel is open does not move it.
   readonly property var targetKeys: {
     var keys = []
     for (var i = 0; i < ribbon.length; i++) keys.push("ribbon:" + ribbon[i].paneId)
+    for (var j = 0; j < tiles.length; j++) keys.push("tile:" + tiles[j].key)
     if (orch.found) keys.push("orch")
     return keys
   }
+  // Nothing is selected on open, as in the overlay: the first thing lit is
+  // the thing you arrowed or pointed to.
   property string selectedKey: ""
   readonly property int selectedIndex: targetKeys.indexOf(selectedKey)
+  readonly property string selectedPane: paneFor(selectedKey)
 
   property string notice: ""
-  // Whether the notice is a failure, drawn urgent, or what an action did.
-  property bool noticeIsError: true
-  property bool jumping: false
   // The i input is open, and every key is text until enter or esc.
   property bool composing: false
   readonly property Item composeInput: composeField
+  // e: the orchestrator's last message, whole.
+  property bool sayMore: false
+  property bool jumping: false
+
+  // Working spins and blocked pulses, and nothing else moves.
+  property int frame: 0
+  readonly property bool animating: {
+    for (var i = 0; i < tiles.length; i++)
+      if (tiles[i].status === "working" || tiles[i].status === "blocked") return true
+    return orch.found === true && (orch.status === "working" || orch.status === "blocked")
+  }
 
   function paneFor(key) {
     if (key === "orch") return orch.found ? orch.paneId : ""
-    return key.indexOf("ribbon:") === 0 ? key.slice(7) : ""
+    if (key.indexOf("ribbon:") === 0) return key.slice(7)
+    if (key.indexOf("tile:pane:") === 0) return key.slice(10)
+    return ""
+  }
+
+  // What muster jump takes for a key: a pane, or ws:<id> for an empty tile.
+  function jumpFor(key) {
+    if (key.indexOf("tile:ws:") === 0) return key.slice(5)
+    return paneFor(key)
+  }
+
+  // Selected and hovered draw the same: the pointer lights up exactly what a
+  // click would take.
+  function isActive(key, hovered) {
+    return hovered || selectedKey === key
   }
 
   function say(ok, message) {
-    noticeIsError = !ok
     notice = message
   }
 
-  // The ribbon row the selection is on, or null.
-  function selectedRow() {
-    var pane = selectedKey.indexOf("ribbon:") === 0 ? selectedKey.slice(7) : ""
-    for (var i = 0; i < ribbon.length; i++)
-      if (ribbon[i].paneId === pane) return ribbon[i]
-    return null
-  }
-
-  // The landed row t reports, the overlay's rule: the selection when it is on
-  // one, else the only one there is. With several and none selected it picks
-  // nothing, because picking for you would send the wrong report.
-  function reportTarget() {
-    var landed = []
-    for (var i = 0; i < ribbon.length; i++)
-      if (ribbon[i].reason === "landed") landed.push(ribbon[i])
-    var sel = selectedRow()
-    if (sel && sel.reason === "landed") return sel
-    return landed.length === 1 ? landed[0] : null
+  function switchPanel(direction) {
+    if (bar && typeof bar.switchPanelFrom === "function")
+      return bar.switchPanelFrom(hostWidget || musterPanel, direction)
+    return false
   }
 
   function textKey(text) {
     if (text === "i") startCompose()
     else if (text === "t") report()
+    else if (text === "e") { if (orch.found && orch.said !== "") sayMore = !sayMore }
+    else if (text === "g") { if (targetKeys.length > 0) selectedKey = targetKeys[0] }
+    else if (text === "G") { if (targetKeys.length > 0) selectedKey = targetKeys[targetKeys.length - 1] }
     else if (text === "M") {
       if (orch.found) jumpTo("orchestrator")
       else say(false, "no orchestrator marked, so there is nowhere to go")
+    } else if (text.length === 1 && text >= "1" && text <= "9") {
+      // A digit lands straight on that ribbon row.
+      var n = Number(text) - 1
+      if (n < ribbon.length) jumpTo(ribbon[n].paneId)
     }
+  }
+
+  // esc folds the message first, then closes, never both at once.
+  function escapeKey() {
+    if (sayMore) sayMore = false
+    else close()
   }
 
   function startCompose() {
@@ -120,8 +147,9 @@ Panel {
     actions.tell(text, say)
   }
 
+  // t reports the landed row the selection is on, or the only one there is.
   function report() {
-    var row = reportTarget()
+    var row = Muster.reportTarget(muster ? muster.snapshot : null, selectedPane)
     if (!row) {
       say(false, "nothing to report: no landed row is selected")
       return
@@ -130,56 +158,80 @@ Panel {
       say(false, "no orchestrator marked, so there is nobody to tell")
       return
     }
-    actions.report(row.paneId, say)
+    actions.report(row.pane_id, say)
   }
 
-  // x takes the row off the ribbon until its status changes. The row goes
-  // when Muster rewrites ui.json and the watch sees it, not before, so the
-  // panel never shows a dismissal that did not happen.
+  // x takes a ribbon row off until its status changes. The row goes when
+  // Muster rewrites ui.json and the watch sees it, not before, so the panel
+  // never shows a dismissal that did not happen.
   function dismiss() {
-    var row = selectedRow()
-    if (!row) {
+    if (selectedKey.indexOf("ribbon:") !== 0) {
       say(false, "x dismisses a row that needs you: select one first")
       return
     }
-    actions.dismiss(row.paneId, function(ok, message) { if (!ok) say(false, message) })
+    actions.dismiss(selectedPane, function(ok, message) { if (!ok) say(false, message) })
   }
 
+  // Up and down wrap, so holding a key never dead-ends. Nothing selected yet:
+  // the first move lands on the end you came from.
   function move(dy) {
-    if (targetKeys.length === 0) return
+    var n = targetKeys.length
+    if (n === 0) return
     var i = selectedIndex
-    if (i < 0) i = dy > 0 ? 0 : targetKeys.length - 1
-    else i = Math.max(0, Math.min(targetKeys.length - 1, i + dy))
+    if (i < 0) i = dy > 0 ? 0 : n - 1
+    else i = ((i + dy) % n + n) % n
     selectedKey = targetKeys[i]
   }
 
-  // Enter with nothing selected takes the top row: the thing that most needs
-  // you is the thing you most likely opened this for.
   function activate() {
-    var key = selectedIndex >= 0 ? selectedKey : (targetKeys.length > 0 ? targetKeys[0] : "")
-    if (key !== "") jumpTo(paneFor(key))
+    if (selectedIndex >= 0) jumpTo(jumpFor(selectedKey))
   }
 
-  function jumpTo(pane) {
-    if (pane === "" || jumping) return
+  function jumpTo(target) {
+    if (target === "" || jumping) return
     jumping = true
     notice = ""
-    actions.jump(pane, function(ok, message) {
+    actions.jump(target, function(ok, message) {
       musterPanel.jumping = false
       if (ok) musterPanel.close()
       else musterPanel.say(false, message)
     })
   }
 
+  // Keeps the selection on screen, the way the overlay scrolls to it.
+  function reveal(item) {
+    if (!item) return
+    var p = item.mapToItem(column, 0, 0)
+    if (p.y < flick.contentY) flick.contentY = p.y
+    else if (p.y + item.height > flick.contentY + flick.height)
+      flick.contentY = Math.min(p.y + item.height - flick.height, Math.max(0, flick.contentHeight - flick.height))
+  }
+
   onOpenedChanged: if (opened) {
     selectedKey = ""
     notice = ""
     composing = false
+    sayMore = false
+    frame = 0
     if (muster) {
       muster.nowMs = Date.now()
       muster.refresh()
     }
     flick.contentY = 0
+  }
+
+  TextMetrics {
+    id: cellMetrics
+    font: musterPanel.mono
+    text: "M"
+  }
+
+  Timer {
+    interval: Muster.FRAME_MS
+    repeat: true
+    running: musterPanel.opened && musterPanel.animating
+    onTriggered: musterPanel.frame = (musterPanel.frame + 1) % 64
+    onRunningChanged: if (!running) musterPanel.frame = 0
   }
 
   Actions {
@@ -195,8 +247,8 @@ Panel {
     bar: musterPanel.bar
     open: musterPanel.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(460))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(640))
+    contentWidth: panel.fittedContentWidth(Style.space(500))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight + strip.implicitHeight + Style.space(16), Style.space(680))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -205,75 +257,116 @@ Panel {
 
       onMoveRequested: function(dx, dy) { if (dy !== 0) musterPanel.move(dy) }
       onActivateRequested: musterPanel.activate()
-      onCloseRequested: musterPanel.close()
+      onCloseRequested: musterPanel.escapeKey()
       onTabRequested: function(direction) { musterPanel.switchPanel(direction) }
       onDeleteRequested: musterPanel.dismiss()
       onTextKey: function(text) { musterPanel.textKey(text) }
 
-      Flickable {
-        id: flick
+      // The overlay's own surface, in Muster's colours whatever the Omarchy
+      // theme, as the popup in herdr is.
+      Rectangle {
+        id: screen
         anchors.fill: parent
-        contentWidth: width
-        contentHeight: column.implicitHeight
+        color: Muster.BG
+        radius: Style.cornerRadius
         clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        flickableDirection: Flickable.VerticalFlick
-        interactive: contentHeight > height
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-        Column {
-          id: column
-          width: flick.width
-          spacing: Style.space(10)
-
-          PanelHero {
-            width: parent.width
-            title: "Muster"
-            meta: musterPanel.muster ? musterPanel.muster.headerMeta : ""
-            foreground: musterPanel.foreground
-            fontFamily: musterPanel.fontFamily
-          }
-
-          // Why there is nothing to show, or why what is shown is old.
-          Text {
-            width: parent.width
-            visible: text !== ""
-            text: musterPanel.muster ? musterPanel.muster.problem : ""
-            textFormat: Text.PlainText
-            wrapMode: Text.Wrap
-            color: musterPanel.muster && (musterPanel.muster.newer || musterPanel.muster.fileState === "unreadable")
-              ? musterPanel.urgent : musterPanel.dim
-            font.family: musterPanel.fontFamily
-            font.pixelSize: Style.font.bodySmall
-          }
+        Flickable {
+          id: flick
+          anchors.top: parent.top
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: strip.top
+          anchors.topMargin: Style.space(8)
+          contentWidth: width
+          contentHeight: column.implicitHeight
+          clip: true
+          boundsBehavior: Flickable.StopAtBounds
+          flickableDirection: Flickable.VerticalFlick
+          interactive: contentHeight > height
+          ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
           Column {
-            id: content
-            width: parent.width
-            spacing: Style.space(10)
-            visible: musterPanel.readable
-            // A stale snapshot is still worth reading, but not at a glance.
-            opacity: musterPanel.muster && musterPanel.muster.stale ? 0.55 : 1
+            id: column
+            width: flick.width
 
-            // ---------------------------------------------- the ribbon
-            PanelSectionHeader {
-              text: "NEEDS YOU"
-              foreground: musterPanel.foreground
-              fontFamily: musterPanel.fontFamily
+            // ------------------------------------------------ the title line
+            Row {
+              x: musterPanel.cell
+              height: musterPanel.lineHeight
+
+              Text {
+                text: "MUSTER"
+                textFormat: Text.PlainText
+                color: Muster.YELLOW
+                font: musterPanel.monoBold
+              }
+              Text {
+                text: musterPanel.header.counts !== "" ? "  " + musterPanel.header.counts : ""
+                textFormat: Text.PlainText
+                color: Muster.DIM
+                font: musterPanel.mono
+              }
+              Text {
+                visible: musterPanel.readable && musterPanel.header.needsYou > 0
+                text: "  " + musterPanel.header.needsYou + " need you"
+                textFormat: Text.PlainText
+                color: Muster.RED
+                font: musterPanel.mono
+              }
             }
 
+            // The overlay's warning: why there is nothing to show, or why
+            // what is shown is old.
             Text {
-              visible: musterPanel.ribbon.length === 0
-              text: "Nothing needs you."
+              x: musterPanel.cell
+              width: parent.width - musterPanel.cell * 2
+              visible: text !== ""
+              text: musterPanel.muster && musterPanel.muster.problem !== "" ? "! " + musterPanel.muster.problem : ""
               textFormat: Text.PlainText
-              color: musterPanel.dim
-              font.family: musterPanel.fontFamily
-              font.pixelSize: Style.font.body
+              wrapMode: Text.Wrap
+              color: Muster.ORANGE
+              font: musterPanel.mono
             }
 
+            Item { width: 1; height: musterPanel.lineHeight }
+
+            // ---------------------------------------------------- the ribbon
             Column {
               width: parent.width
-              spacing: Style.space(4)
+              visible: musterPanel.readable && musterPanel.ribbon.length > 0
+
+              // The rule carries the count and the colour of the most urgent
+              // row, so the section says how bad things are before any row.
+              Item {
+                width: parent.width
+                height: musterPanel.lineHeight
+
+                Rectangle {
+                  id: needsBadge
+                  height: parent.height
+                  width: needsLabel.implicitWidth
+                  color: musterPanel.muster ? musterPanel.muster.accent : Muster.DIM
+
+                  Text {
+                    id: needsLabel
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: " NEEDS YOU " + musterPanel.header.needsYou + " "
+                    textFormat: Text.PlainText
+                    color: Muster.BG
+                    font: musterPanel.monoBold
+                  }
+                }
+
+                Rectangle {
+                  anchors.left: needsBadge.right
+                  anchors.right: parent.right
+                  anchors.rightMargin: musterPanel.cell
+                  anchors.verticalCenter: parent.verticalCenter
+                  height: 1
+                  color: needsBadge.color
+                }
+              }
 
               Repeater {
                 model: musterPanel.ribbon
@@ -285,109 +378,104 @@ Panel {
                   readonly property bool selected: musterPanel.selectedKey === key
 
                   width: parent.width
-                  implicitHeight: ribbonText.implicitHeight + Style.space(10)
-                  radius: Style.cornerRadius
-                  // The top two ranks keep a warm tint even unselected, as in
-                  // the overlay, so what most needs you reads first.
-                  color: selected ? musterPanel.selectedFill
-                    : ribbonMouse.containsMouse ? musterPanel.hoverFill
-                    : modelData.hot ? Util.alpha(modelData.accent, 0.10) : "transparent"
+                  implicitHeight: ribbonLines.implicitHeight
+                  // The top two ranks keep a warm background even unselected,
+                  // so what most needs you reads first. The rest sit on a
+                  // panel so the ribbon reads as one block.
+                  color: musterPanel.isActive(key, ribbonMouse.containsMouse) ? Muster.SEL_BG
+                    : modelData.hot ? Muster.HOT_BG : Muster.PANEL_BG
+
+                  onSelectedChanged: if (selected) musterPanel.reveal(ribbonRow)
 
                   Rectangle {
-                    anchors.left: parent.left
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
-                    anchors.margins: Style.space(3)
-                    width: Style.space(3)
-                    radius: width / 2
+                    width: Math.round(musterPanel.cell / 2)
                     color: ribbonRow.modelData.accent
                   }
 
                   Column {
-                    id: ribbonText
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.leftMargin: Style.space(12)
-                    anchors.rightMargin: Style.space(8)
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.space(2)
+                    id: ribbonLines
+                    x: musterPanel.cell * 2
+                    width: parent.width - x - musterPanel.cell
 
                     RowLayout {
                       width: parent.width
-                      spacing: Style.space(6)
+                      spacing: 0
+
+                      Text {
+                        text: ribbonRow.modelData.index + " "
+                        textFormat: Text.PlainText
+                        color: ribbonRow.modelData.accent
+                        font: musterPanel.monoBold
+                      }
 
                       Rectangle {
-                        Layout.alignment: Qt.AlignVCenter
-                        implicitWidth: badgeLabel.implicitWidth + Style.space(8)
-                        implicitHeight: badgeLabel.implicitHeight + Style.space(2)
-                        radius: Style.space(3)
+                        implicitWidth: badgeLabel.implicitWidth
+                        implicitHeight: musterPanel.lineHeight
                         color: ribbonRow.modelData.accent
 
                         Text {
                           id: badgeLabel
-                          anchors.centerIn: parent
-                          text: ribbonRow.modelData.label
+                          anchors.verticalCenter: parent.verticalCenter
+                          text: " " + ribbonRow.modelData.label + " "
                           textFormat: Text.PlainText
-                          color: musterPanel.badgeText
-                          font.family: musterPanel.fontFamily
-                          font.pixelSize: Style.font.caption
-                          font.bold: true
+                          color: Muster.BG
+                          font: musterPanel.monoBold
                         }
                       }
 
-                      // The workspace leads, faint, the way every tile in the
-                      // overlay's grid does.
+                      // The workspace leads, faint, the way every tile does:
+                      // the ribbon and the grid read as the same map.
                       Text {
-                        visible: text !== ""
-                        text: ribbonRow.modelData.workspace
+                        text: " " + (ribbonRow.modelData.workspace !== "" ? ribbonRow.modelData.workspace + " " : "")
                         textFormat: Text.PlainText
-                        color: musterPanel.dim
-                        font.family: musterPanel.fontFamily
-                        font.pixelSize: Style.font.bodySmall
+                        color: Muster.FAINT
+                        font: musterPanel.mono
                       }
 
                       Text {
                         text: ribbonRow.modelData.sigil + " " + ribbonRow.modelData.repo
                         textFormat: Text.PlainText
                         color: ribbonRow.modelData.repoColor
-                        font.family: musterPanel.fontFamily
-                        font.pixelSize: Style.font.body
-                        font.bold: true
+                        font: musterPanel.monoBold
+                      }
+
+                      Text {
+                        text: "/"
+                        textFormat: Text.PlainText
+                        color: Muster.FAINT
+                        font: musterPanel.mono
                       }
 
                       Text {
                         Layout.fillWidth: true
-                        text: "/" + ribbonRow.modelData.agent
+                        text: ribbonRow.modelData.agent
                         textFormat: Text.PlainText
                         elide: Text.ElideRight
-                        color: musterPanel.foreground
-                        font.family: musterPanel.fontFamily
-                        font.pixelSize: Style.font.body
-                        font.bold: true
+                        color: Muster.FG
+                        font: musterPanel.monoBold
                       }
 
                       Text {
-                        text: ribbonRow.modelData.age
+                        text: " " + ribbonRow.modelData.age
                         textFormat: Text.PlainText
-                        color: musterPanel.dim
-                        font.family: musterPanel.fontFamily
-                        font.pixelSize: Style.font.bodySmall
+                        color: Muster.DIM
+                        font: musterPanel.mono
                       }
                     }
 
-                    // The detail is the sentence you actually read: the
-                    // question, or what landed with nobody moving on it.
+                    // The detail is the sentence you actually read, so it
+                    // gets the bright foreground.
                     Text {
-                      width: parent.width
+                      x: musterPanel.cell * 4
+                      width: parent.width - x
                       visible: text !== ""
                       text: ribbonRow.modelData.detail
                       textFormat: Text.PlainText
-                      wrapMode: Text.Wrap
-                      maximumLineCount: 2
                       elide: Text.ElideRight
-                      color: musterPanel.foreground
-                      font.family: musterPanel.fontFamily
-                      font.pixelSize: Style.font.bodySmall
+                      color: Muster.FG
+                      font: musterPanel.mono
                     }
                   }
 
@@ -403,262 +491,543 @@ Panel {
                   }
                 }
               }
+
+              Item { width: 1; height: musterPanel.lineHeight }
             }
 
-            Text {
-              visible: musterPanel.moreRows > 0
-              text: "and " + musterPanel.moreRows + " more in Muster"
-              textFormat: Text.PlainText
-              color: musterPanel.dim
-              font.family: musterPanel.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
-
-            PanelSeparator { foreground: musterPanel.foreground }
-
-            // ------------------------------------------ the orchestrator
-            PanelSectionHeader {
-              text: "ORCHESTRATOR"
-              foreground: musterPanel.foreground
-              fontFamily: musterPanel.fontFamily
-            }
-
-            Text {
+            // ------------------------------------------------------ the grid
+            Item {
               width: parent.width
-              visible: !musterPanel.orch.found
-              text: "None marked. Press o on the agent in charge in Muster, or name its pane orchestrator."
-              textFormat: Text.PlainText
-              wrapMode: Text.Wrap
-              color: musterPanel.dim
-              font.family: musterPanel.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
+              height: musterPanel.lineHeight
+              visible: musterPanel.readable
 
-            Rectangle {
-              id: orchRow
-              readonly property bool selected: musterPanel.selectedKey === "orch"
-
-              visible: musterPanel.orch.found
-              width: parent.width
-              implicitHeight: orchText.implicitHeight + Style.space(10)
-              radius: Style.cornerRadius
-              color: selected ? musterPanel.selectedFill
-                : orchMouse.containsMouse ? musterPanel.hoverFill : "transparent"
-
-              Column {
-                id: orchText
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.leftMargin: Style.space(8)
-                anchors.rightMargin: Style.space(8)
+              Text {
+                id: gridLabel
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(3)
-
-                RowLayout {
-                  width: parent.width
-                  spacing: Style.space(8)
-
-                  Text {
-                    text: "⌂"
-                    textFormat: Text.PlainText
-                    color: "#fabd2f"
-                    font.family: musterPanel.fontFamily
-                    font.pixelSize: Style.font.body
-                    font.bold: true
-                  }
-
-                  Text {
-                    text: musterPanel.orch.found
-                      ? (musterPanel.orch.sigil !== "" ? musterPanel.orch.sigil + " " : "") + musterPanel.orch.who : ""
-                    textFormat: Text.PlainText
-                    color: musterPanel.orch.color || musterPanel.foreground
-                    font.family: musterPanel.fontFamily
-                    font.pixelSize: Style.font.body
-                    font.bold: true
-                  }
-
-                  Text {
-                    text: musterPanel.orch.found ? musterPanel.orch.statusIcon + " " + musterPanel.orch.status : ""
-                    textFormat: Text.PlainText
-                    color: musterPanel.orch.statusColor || musterPanel.dim
-                    font.family: musterPanel.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                  }
-
-                  Text {
-                    Layout.fillWidth: true
-                    text: musterPanel.orch.age || ""
-                    textFormat: Text.PlainText
-                    color: musterPanel.dim
-                    font.family: musterPanel.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                  }
-                }
-
-                // What it last said back, and how long ago the daemon read it.
-                RowLayout {
-                  width: parent.width
-                  spacing: Style.space(6)
-
-                  Text {
-                    Layout.alignment: Qt.AlignTop
-                    text: "↓"
-                    textFormat: Text.PlainText
-                    color: musterPanel.dim
-                    font.family: musterPanel.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                  }
-
-                  Text {
-                    Layout.fillWidth: true
-                    text: musterPanel.orch.said ? musterPanel.orch.said : "nothing said yet"
-                    textFormat: Text.PlainText
-                    wrapMode: Text.Wrap
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    color: musterPanel.orch.said ? musterPanel.foreground : musterPanel.dim
-                    font.family: musterPanel.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                  }
-
-                  Text {
-                    Layout.alignment: Qt.AlignTop
-                    visible: text !== ""
-                    text: musterPanel.orch.saidAge || ""
-                    textFormat: Text.PlainText
-                    color: musterPanel.dim
-                    font.family: musterPanel.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                  }
-                }
+                text: " AGENTS & WORKSPACES "
+                textFormat: Text.PlainText
+                color: Muster.DIM
+                font: musterPanel.mono
               }
 
-              MouseArea {
-                id: orchMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  musterPanel.selectedKey = "orch"
-                  musterPanel.jumpTo(musterPanel.orch.paneId)
-                }
+              Rectangle {
+                anchors.left: gridLabel.right
+                anchors.right: parent.right
+                anchors.rightMargin: musterPanel.cell
+                anchors.verticalCenter: parent.verticalCenter
+                height: 1
+                color: Muster.FAINT
               }
-            }
-
-            PanelSeparator { foreground: musterPanel.foreground }
-
-            // ------------------------------------------------ the repos
-            PanelSectionHeader {
-              text: "REPOS"
-              foreground: musterPanel.foreground
-              fontFamily: musterPanel.fontFamily
             }
 
             Text {
-              visible: musterPanel.repos.length === 0
-              text: "No workspaces discovered yet."
+              visible: musterPanel.readable && musterPanel.tiles.length === 0
+              text: "  no workspaces discovered yet"
               textFormat: Text.PlainText
-              color: musterPanel.dim
-              font.family: musterPanel.fontFamily
-              font.pixelSize: Style.font.bodySmall
+              color: Muster.DIM
+              font: musterPanel.mono
             }
 
-            Column {
-              width: parent.width
-              spacing: Style.space(4)
+            Repeater {
+              model: musterPanel.readable ? musterPanel.tiles : []
 
-              Repeater {
-                model: musterPanel.repos
+              delegate: Column {
+                id: tileBlock
+                required property var modelData
+                required property int index
+                width: parent.width
 
-                delegate: RowLayout {
-                  id: repoRow
-                  required property var modelData
+                // A blank line between tiles, which belongs to neither.
+                Item { width: 1; height: tileBlock.index > 0 ? musterPanel.lineHeight : 0 }
+
+                Rectangle {
+                  id: tile
+                  readonly property var t: tileBlock.modelData
+                  readonly property string key: "tile:" + t.key
+                  readonly property bool selected: musterPanel.selectedKey === key
+
                   width: parent.width
-                  spacing: Style.space(8)
+                  implicitHeight: tileLines.implicitHeight
+                  color: musterPanel.isActive(key, tileMouse.containsMouse) ? Muster.SEL_BG : "transparent"
 
-                  Text {
-                    text: repoRow.modelData.sigil + " " + repoRow.modelData.name
-                    textFormat: Text.PlainText
-                    color: repoRow.modelData.color
-                    font.family: musterPanel.fontFamily
-                    font.pixelSize: Style.font.body
-                    font.bold: true
+                  onSelectedChanged: if (selected) musterPanel.reveal(tile)
+
+                  // The repo's bar, or a faint one for a workspace with no agent.
+                  Rectangle {
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: Math.round(musterPanel.cell / 2)
+                    color: tile.t.barColor
                   }
 
-                  Text {
-                    Layout.fillWidth: true
-                    text: repoRow.modelData.branch
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                    color: musterPanel.dim
-                    font.family: musterPanel.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                  }
+                  Column {
+                    id: tileLines
+                    x: musterPanel.cell * 2
+                    width: parent.width - x - musterPanel.cell
 
-                  Text {
-                    visible: repoRow.modelData.counts.length === 0
-                    text: "no agents"
-                    textFormat: Text.PlainText
-                    color: musterPanel.dim
-                    font.family: musterPanel.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                  }
+                    // Where: the workspace, marked when it is the one you are
+                    // in, and the pane enter lands on.
+                    RowLayout {
+                      width: parent.width
+                      spacing: 0
 
-                  Repeater {
-                    model: repoRow.modelData.counts
+                      Text {
+                        text: tile.t.num
+                        textFormat: Text.PlainText
+                        color: Muster.FG
+                        font: musterPanel.mono
+                      }
+                      Text {
+                        Layout.fillWidth: !tile.t.isAgent
+                        text: (tile.t.isAgent ? " " : "   ") + tile.t.label
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: Muster.DIM
+                        font: musterPanel.mono
+                      }
+                      Text {
+                        Layout.fillWidth: true
+                        visible: tile.t.isAgent
+                        text: " " + (tile.t.chip || "")
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: Muster.FAINT
+                        font: musterPanel.mono
+                      }
+                    }
 
-                    delegate: Text {
-                      required property var modelData
-                      text: modelData.icon + " " + modelData.count
+                    // An empty workspace: what its panes sit in.
+                    RowLayout {
+                      visible: !tile.t.isAgent
+                      width: parent.width
+                      spacing: 0
+
+                      Text {
+                        text: "    "
+                        textFormat: Text.PlainText
+                        font: musterPanel.mono
+                      }
+                      Repeater {
+                        model: tile.t.isAgent ? [] : tile.t.sigils
+                        delegate: Text {
+                          required property var modelData
+                          text: modelData.sigil
+                          textFormat: Text.PlainText
+                          color: modelData.color
+                          font: musterPanel.mono
+                        }
+                      }
+                      Text {
+                        Layout.fillWidth: true
+                        text: (tile.t.isAgent || tile.t.sigils.length === 0 ? "" : " ") + (tile.t.detail || "")
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: Muster.FAINT
+                        font: musterPanel.mono
+                      }
+                    }
+
+                    // Which checkout: the repo in its colour, the branch faint.
+                    RowLayout {
+                      visible: tile.t.isAgent
+                      width: parent.width
+                      spacing: 0
+
+                      Text {
+                        text: (tile.t.sigil || "") + " " + (tile.t.repo || "")
+                        textFormat: Text.PlainText
+                        color: tile.t.repoColor || Muster.FG
+                        font: musterPanel.monoBold
+                      }
+                      Text {
+                        Layout.fillWidth: true
+                        text: tile.t.branch ? " · " + tile.t.branch : ""
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: Muster.FAINT
+                        font: musterPanel.mono
+                      }
+                    }
+
+                    // Who: the orchestrator's mark, status, name and kind, and
+                    // how long it has held that status.
+                    RowLayout {
+                      visible: tile.t.isAgent
+                      width: parent.width
+                      spacing: 0
+
+                      Text {
+                        text: tile.t.orchestrator ? "⌂" : " "
+                        textFormat: Text.PlainText
+                        color: Muster.FG
+                        font: musterPanel.mono
+                      }
+                      Text {
+                        text: Muster.statusIcon(tile.t.status, musterPanel.frame) + " "
+                        textFormat: Text.PlainText
+                        color: Muster.statusColor(tile.t.status, musterPanel.frame)
+                        font: musterPanel.mono
+                      }
+                      Text {
+                        text: tile.t.name || ""
+                        textFormat: Text.PlainText
+                        color: Muster.FG
+                        font: musterPanel.monoBold
+                      }
+                      Text {
+                        Layout.fillWidth: true
+                        text: tile.t.kind ? " [" + tile.t.kind + "]" : ""
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: Muster.FAINT
+                        font: musterPanel.mono
+                      }
+                      Text {
+                        text: " " + (tile.t.age || "")
+                        textFormat: Text.PlainText
+                        color: Muster.DIM
+                        font: musterPanel.mono
+                      }
+                    }
+
+                    // What it says: the question, or the task.
+                    Text {
+                      x: musterPanel.cell * 4
+                      width: parent.width - x
+                      visible: tile.t.isAgent && !!tile.t.task
+                      text: tile.t.task || ""
                       textFormat: Text.PlainText
-                      color: modelData.color
-                      font.family: musterPanel.fontFamily
-                      font.pixelSize: Style.font.bodySmall
+                      elide: Text.ElideRight
+                      color: tile.t.taskColor || Muster.DIM
+                      font: musterPanel.mono
+                    }
+
+                    // What it depends on. Never "blocked", which means waiting
+                    // on you.
+                    RowLayout {
+                      x: musterPanel.cell * 4
+                      width: parent.width - x
+                      visible: tile.t.isAgent && !!tile.t.dependsOn
+                      spacing: 0
+
+                      Text {
+                        text: "⧗ depends on "
+                        textFormat: Text.PlainText
+                        color: Muster.DIM
+                        font: musterPanel.mono
+                      }
+                      Text {
+                        text: tile.t.dependsOn ? (tile.t.dependsOn.sigil ? tile.t.dependsOn.sigil + " " : "") + tile.t.dependsOn.repo : ""
+                        textFormat: Text.PlainText
+                        color: tile.t.dependsOn ? tile.t.dependsOn.color : Muster.DIM
+                        font: musterPanel.mono
+                      }
+                      Text {
+                        Layout.fillWidth: true
+                        text: tile.t.dependsOn ? " · " + tile.t.dependsOn.when : ""
+                        textFormat: Text.PlainText
+                        elide: Text.ElideRight
+                        color: Muster.DIM
+                        font: musterPanel.mono
+                      }
+                    }
+
+                    // Which repos have agents that depend on this one.
+                    Row {
+                      x: musterPanel.cell * 4
+                      visible: tile.t.isAgent && !!tile.t.neededBy && tile.t.neededBy.length > 0
+
+                      Text {
+                        text: "▸ needed by "
+                        textFormat: Text.PlainText
+                        color: Muster.DIM
+                        font: musterPanel.mono
+                      }
+                      Repeater {
+                        model: tile.t.isAgent ? tile.t.neededBy : []
+                        delegate: Text {
+                          required property var modelData
+                          required property int index
+                          text: (index > 0 ? ", " : "") + modelData.sigil + " " + modelData.repo
+                          textFormat: Text.PlainText
+                          color: modelData.color
+                          font: musterPanel.mono
+                        }
+                      }
+                    }
+
+                    // The workspace's other panes, shared by its agent tiles.
+                    Text {
+                      x: musterPanel.cell * 4
+                      width: parent.width - x
+                      visible: tile.t.isAgent && !!tile.t.footer
+                      text: tile.t.footer || ""
+                      textFormat: Text.PlainText
+                      elide: Text.ElideRight
+                      color: Muster.FAINT
+                      font: musterPanel.mono
+                    }
+                  }
+
+                  MouseArea {
+                    id: tileMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      musterPanel.selectedKey = tile.key
+                      musterPanel.jumpTo(tile.t.jump)
                     }
                   }
                 }
               }
             }
           }
+        }
 
-          // i: a message for the orchestrator. Enter sends it, esc drops it.
-          TextField {
-            id: composeField
+        // ------------------------------------------------ the orchestrator
+        // Pinned to the bottom edge, as in the overlay: it is how you reach
+        // the orchestrator, and scrolling it away would leave you blind.
+        Column {
+          id: strip
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: Style.space(8)
+          visible: musterPanel.readable
+
+          Item { width: 1; height: musterPanel.lineHeight }
+
+          Item {
             width: parent.width
-            visible: musterPanel.composing
-            placeholderText: "message the orchestrator"
-            color: musterPanel.foreground
-            font.family: musterPanel.fontFamily
-            font.pixelSize: Style.font.body
-            onAccepted: musterPanel.sendCompose()
-            Keys.onEscapePressed: function(event) {
-              event.accepted = true
-              musterPanel.endCompose()
+            height: musterPanel.lineHeight
+
+            Text {
+              id: stripLabel
+              anchors.verticalCenter: parent.verticalCenter
+              text: " ORCHESTRATOR "
+              textFormat: Text.PlainText
+              color: Muster.DIM
+              font: musterPanel.mono
+            }
+
+            Rectangle {
+              anchors.left: stripLabel.right
+              anchors.right: parent.right
+              anchors.rightMargin: musterPanel.cell
+              anchors.verticalCenter: parent.verticalCenter
+              height: 1
+              color: Muster.FAINT
             }
           }
 
-          // The overlay's notice line: why a command failed, or what it did.
+          // None marked: say how to mark one rather than guess.
           Text {
-            width: parent.width
-            visible: text !== ""
-            text: musterPanel.notice
+            x: musterPanel.cell * 2
+            width: parent.width - x - musterPanel.cell
+            visible: !musterPanel.orch.found
+            text: "none marked · press o on the agent in charge, or name its pane orchestrator"
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
-            color: musterPanel.noticeIsError ? musterPanel.urgent : musterPanel.dim
-            font.family: musterPanel.fontFamily
-            font.pixelSize: Style.font.bodySmall
+            color: Muster.FAINT
+            font: musterPanel.mono
+          }
+
+          Rectangle {
+            id: orchRow
+            readonly property string key: "orch"
+            readonly property bool selected: musterPanel.selectedKey === key
+
+            visible: musterPanel.orch.found === true
+            width: parent.width
+            implicitHeight: orchLines.implicitHeight
+            color: musterPanel.isActive(key, orchMouse.containsMouse) ? Muster.SEL_BG : "transparent"
+
+            // The whole strip is one target: a click anywhere on it jumps to
+            // the orchestrator. Under the lines, so the more link takes its
+            // own clicks.
+            MouseArea {
+              id: orchMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                musterPanel.selectedKey = orchRow.key
+                musterPanel.jumpTo(musterPanel.orch.paneId)
+              }
+            }
+
+            Column {
+              id: orchLines
+              x: musterPanel.cell
+              width: parent.width - x - musterPanel.cell
+
+              // Who, named by the repo it works in, its status, and M.
+              RowLayout {
+                width: parent.width
+                spacing: 0
+
+                Text {
+                  text: "⌂ "
+                  textFormat: Text.PlainText
+                  color: Muster.YELLOW
+                  font: musterPanel.monoBold
+                }
+                Text {
+                  text: musterPanel.orch.found
+                    ? (musterPanel.orch.sigil !== "" ? musterPanel.orch.sigil + " " : "") + musterPanel.orch.who : ""
+                  textFormat: Text.PlainText
+                  color: musterPanel.orch.color || Muster.FG
+                  font: musterPanel.monoBold
+                }
+                Text {
+                  text: musterPanel.orch.found
+                    ? " " + Muster.statusIcon(musterPanel.orch.status, musterPanel.frame) + " " + musterPanel.orch.status : ""
+                  textFormat: Text.PlainText
+                  color: Muster.statusColor(musterPanel.orch.status, musterPanel.frame)
+                  font: musterPanel.mono
+                }
+                Text {
+                  Layout.fillWidth: true
+                  text: " " + (musterPanel.orch.age || "")
+                  textFormat: Text.PlainText
+                  color: Muster.DIM
+                  font: musterPanel.mono
+                }
+                Text {
+                  text: "M jumps"
+                  textFormat: Text.PlainText
+                  color: Muster.FAINT
+                  font: musterPanel.mono
+                }
+              }
+
+              // What it last said, and how long ago. One line, with e more
+              // when that cuts it; e shows it whole.
+              RowLayout {
+                width: parent.width
+                spacing: 0
+
+                Text {
+                  Layout.alignment: Qt.AlignTop
+                  text: "  ↓ "
+                  textFormat: Text.PlainText
+                  color: musterPanel.orch.said ? Muster.DIM : Muster.FAINT
+                  font: musterPanel.mono
+                }
+                Text {
+                  id: saidText
+                  Layout.fillWidth: true
+                  text: musterPanel.orch.said
+                    ? (musterPanel.sayMore ? musterPanel.orch.said : musterPanel.orch.said.replace(/\s+/g, " "))
+                    : "nothing said yet"
+                  textFormat: Text.PlainText
+                  wrapMode: musterPanel.sayMore ? Text.Wrap : Text.NoWrap
+                  elide: musterPanel.sayMore ? Text.ElideNone : Text.ElideRight
+                  color: musterPanel.orch.said ? Muster.FG : Muster.FAINT
+                  font: musterPanel.mono
+                }
+                Text {
+                  Layout.alignment: Qt.AlignTop
+                  visible: saidText.truncated && !musterPanel.sayMore
+                  text: " e more"
+                  textFormat: Text.PlainText
+                  color: Muster.FAINT
+                  font: musterPanel.mono
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: musterPanel.sayMore = true
+                  }
+                }
+                Text {
+                  Layout.alignment: Qt.AlignTop
+                  visible: text !== ""
+                  text: musterPanel.orch.saidAge ? " " + musterPanel.orch.saidAge : ""
+                  textFormat: Text.PlainText
+                  color: Muster.DIM
+                  font: musterPanel.mono
+                }
+              }
+
+              Text {
+                x: musterPanel.cell * 4
+                visible: musterPanel.sayMore
+                text: "e less"
+                textFormat: Text.PlainText
+                color: Muster.FAINT
+                font: musterPanel.mono
+
+                MouseArea {
+                  anchors.fill: parent
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: musterPanel.sayMore = false
+                }
+              }
+            }
+          }
+
+          // The strip's last line: the input while it is open, then whatever
+          // just happened, then the keys.
+          RowLayout {
+            x: musterPanel.cell
+            width: parent.width - x - musterPanel.cell
+            visible: musterPanel.composing
+            spacing: 0
+
+            Text {
+              text: "› "
+              textFormat: Text.PlainText
+              color: Muster.YELLOW
+              font: musterPanel.monoBold
+            }
+
+            // i: a message for the orchestrator. Enter sends it, esc drops it.
+            TextField {
+              id: composeField
+              Layout.fillWidth: true
+              padding: 0
+              background: null
+              color: Muster.FG
+              selectionColor: Muster.SEL_BG
+              placeholderText: "message the orchestrator"
+              placeholderTextColor: Muster.FAINT
+              font: musterPanel.mono
+              onAccepted: musterPanel.sendCompose()
+              Keys.onEscapePressed: function(event) {
+                event.accepted = true
+                musterPanel.endCompose()
+              }
+            }
+
+            Text {
+              text: "  enter sends · esc cancels"
+              textFormat: Text.PlainText
+              color: Muster.FAINT
+              font: musterPanel.mono
+            }
           }
 
           Text {
-            width: parent.width
-            visible: musterPanel.targetKeys.length > 0
-            text: musterPanel.composing ? "enter sends · esc cancels"
-              : "j/k move · enter jumps · i tell · t report · x dismiss · M orchestrator · esc closes"
-            wrapMode: Text.Wrap
+            x: musterPanel.cell
+            width: parent.width - x - musterPanel.cell
+            visible: !musterPanel.composing && musterPanel.notice !== ""
+            text: "· " + musterPanel.notice
             textFormat: Text.PlainText
-            color: Qt.darker(musterPanel.foreground, 2)
-            font.family: musterPanel.fontFamily
-            font.pixelSize: Style.font.caption
+            wrapMode: Text.Wrap
+            color: Muster.ORANGE
+            font: musterPanel.mono
+          }
+
+          Text {
+            width: parent.width - musterPanel.cell
+            visible: !musterPanel.composing && musterPanel.notice === "" && musterPanel.orch.found === true
+            text: Muster.stripHint(musterPanel.muster ? musterPanel.muster.snapshot : null, musterPanel.selectedPane)
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            color: Muster.FAINT
+            font: musterPanel.mono
           }
         }
       }

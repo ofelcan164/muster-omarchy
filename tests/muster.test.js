@@ -82,12 +82,14 @@ test("parseUi keeps only well-formed dismissals and colours", () => {
     colors: { "acme/api": 7, "bad": "red" },
     say_rows: 3
   }))
-  assert.deepEqual(plain(ui), { dismissed: { "w1:p2": "blocked" }, colors: { "acme/api": 7 } })
+  assert.deepEqual(plain(ui), { dismissed: { "w1:p2": "blocked" }, colors: { "acme/api": 7 }, sort: 2 })
+  assert.equal(M.parseUi(JSON.stringify({ sort: 4 })).sort, 0, "a sort past herdr's is first seen")
+  assert.equal(M.parseUi(JSON.stringify({ sort: 1.5 })).sort, 0)
 })
 
 test("parseUi treats a missing or broken file as the defaults", () => {
   for (const text of ["", "{", "[]", "null"]) {
-    assert.deepEqual(plain(M.parseUi(text)), { dismissed: {}, colors: {} })
+    assert.deepEqual(plain(M.parseUi(text)), { dismissed: {}, colors: {}, sort: 0 })
   }
 })
 
@@ -232,7 +234,7 @@ test("ribbonView carries what each row draws", () => {
   })
   assert.deepEqual(rows[1].dependents, ["web/login"])
   assert.equal(rows[2].age, "-", "an age the daemon never measured")
-  assert.equal(rows[2].workspace, "1 api", "a stopped pane is found among the other panes")
+  assert.equal(rows[2].workspace, "", "a stopped process leads with no workspace, as in the overlay")
   assert.equal(rows[2].detail, "npm run dev exited")
   assert.equal(rows[3].hot, false)
 })
@@ -285,24 +287,86 @@ test("orchestratorView leaves the said age off when nothing was said", () => {
   assert.equal(o.saidAge, "")
 })
 
-test("reposView counts agents by status, what needs you first", () => {
-  const repos = plain(M.reposView(snapshot(), M.parseUi("")))
-  assert.deepEqual(repos.map((r) => r.name), ["api", "web", "scratch"])
-  assert.deepEqual(repos[0].counts.map((c) => [c.status, c.count]),
-    [["blocked", 1], ["working", 1], ["idle", 1]])
-  assert.deepEqual(repos[1].counts.map((c) => [c.status, c.count]), [["done", 1], ["idle", 1]])
-  assert.equal(repos[2].agents, 0)
-  assert.equal(repos[2].color, M.NEUTRAL_COLOR)
-  assert.equal(repos[1].branch, "feature/login")
+test("headerView is the overlay's title line", () => {
+  const ui = M.parseUi(JSON.stringify({ dismissed: { "w1:p2": "blocked" } }))
+  assert.deepEqual(plain(M.headerView(snapshot(), ui)), { counts: "3 workspaces · 5 agents", needsYou: 4 })
+  const one = snapshot((r) => { r.counts.workspaces = 1; r.counts.agents = 1 })
+  assert.equal(M.headerView(one, M.parseUi("")).counts, "1 workspace · 1 agent")
 })
 
-test("headerMeta summarises the state", () => {
-  const ui = M.parseUi("")
-  assert.equal(M.headerMeta("loaded", snapshot(), ui, GENERATED), "5 need you · 5 agents · 3 repos")
-  assert.equal(M.headerMeta("loaded", snapshot((r) => { r.attention = r.attention.slice(0, 1) }), ui, GENERATED),
-    "1 needs you · 5 agents · 3 repos")
-  assert.equal(M.headerMeta("loaded", snapshot(), ui, GENERATED + 120000), "stale · 2m old")
-  assert.equal(M.headerMeta("missing", null, ui, GENERATED), "no snapshot yet")
+test("the NEEDS YOU rule takes the top undismissed row's colour", () => {
+  assert.equal(M.attentionAccent(snapshot(), M.parseUi("")), M.RED)
+  const ui = M.parseUi(JSON.stringify({ dismissed: { "w1:p2": "blocked" } }))
+  assert.equal(M.attentionAccent(snapshot(), ui), M.ORANGE)
+  assert.equal(M.attentionAccent(snapshot((r) => { r.attention = [] }), ui), M.DIM)
+})
+
+test("tilesView is the overlay's grid: one tile per agent, one per empty workspace", () => {
+  const tiles = plain(M.tilesView(snapshot(), M.parseUi(""), GENERATED + 60000))
+  // First seen: by the repo's slot, agents by pane, empty workspaces last.
+  assert.deepEqual(tiles.map((t) => t.key),
+    ["pane:w1:p1", "pane:w1:p2", "pane:w1:p3", "pane:w2:p1", "pane:w2:p2", "ws:w3"])
+  assert.deepEqual(tiles[1], {
+    key: "pane:w1:p2", jump: "w1:p2", isAgent: true, paneId: "w1:p2",
+    barColor: M.PALETTE[12],
+    num: "▸1", label: "api", chip: "[p2]",
+    sigil: "✦", repo: "api", repoColor: M.PALETTE[12], branch: "main",
+    orchestrator: false, status: "blocked", name: "fixer", kind: "codex",
+    age: tiles[1].age,
+    task: "? Allow rm -rf build/?", taskColor: M.FG,
+    dependsOn: null,
+    neededBy: [{ sigil: "◆", repo: "web", color: M.PALETTE[4] }],
+    footer: "3 agents · 1 pane · dev server"
+  })
+  assert.equal(tiles[0].orchestrator, true, "the orchestrator's tile carries its mark")
+  assert.equal(tiles[3].num, " 2", "only the focused workspace is marked")
+  assert.equal(tiles[3].task, "wire the login form")
+  assert.equal(tiles[3].taskColor, M.DIM)
+  assert.deepEqual(tiles[3].dependsOn, { sigil: "✦", repo: "api", color: M.PALETTE[12], when: tiles[3].dependsOn.when })
+  assert.match(tiles[3].dependsOn.when, /^landed \d+[smhd] ago$/)
+  assert.deepEqual(tiles[5], {
+    key: "ws:w3", jump: "ws:w3", isAgent: false, paneId: "",
+    barColor: M.FAINT, num: " 3", label: "scratch",
+    sigils: [{ sigil: "○", color: M.NEUTRAL_COLOR }], detail: "scratch"
+  })
+})
+
+test("tilesView follows the sort ui.json holds", () => {
+  const keys = (sort) => M.tilesView(snapshot(), M.parseUi(JSON.stringify({ sort })), GENERATED).map((t) => t.key)
+  assert.deepEqual(plain(keys(1)), ["pane:w1:p3", "pane:w1:p2", "pane:w1:p1", "pane:w2:p1", "pane:w2:p2", "ws:w3"], "a-z")
+  assert.deepEqual(plain(keys(2)), ["pane:w1:p2", "pane:w2:p1", "pane:w2:p2", "pane:w1:p1", "pane:w1:p3", "ws:w3"], "attention")
+  assert.deepEqual(plain(keys(3)), ["pane:w1:p1", "pane:w1:p2", "pane:w1:p3", "pane:w2:p1", "pane:w2:p2", "ws:w3"], "herdr")
+})
+
+test("a stale task is marked, and none draws no line", () => {
+  const s = snapshot((r) => {
+    r.repos[1].agents[0].task_source = "orchestrator_stale"
+    r.repos[1].agents[1].task = "x"
+    r.repos[1].agents[1].task_source = "none"
+  })
+  const tiles = M.tilesView(s, M.parseUi(""), GENERATED)
+  assert.equal(tiles[3].task, "(stale) wire the login form")
+  assert.equal(tiles[3].taskColor, M.FAINT)
+  assert.equal(tiles[4].task, "")
+})
+
+test("reportTarget and the strip's hint follow the overlay's rule", () => {
+  const s = snapshot()
+  assert.equal(M.reportTarget(s, "").pane_id, "w2:p1", "the only landed row")
+  assert.equal(M.reportTarget(s, "w1:p2").pane_id, "w2:p1", "whatever else is selected")
+  assert.equal(M.stripHint(s, ""), " › i tells it something · t tells it api landed")
+  const two = snapshot((r) => { r.attention.push(Object.assign({}, r.attention[1], { pane_id: "w2:p2" })) })
+  assert.equal(M.reportTarget(two, ""), null, "two landed and none selected picks nothing")
+  assert.equal(M.reportTarget(two, "w2:p2").pane_id, "w2:p2")
+  assert.equal(M.stripHint(two, ""), " › press i to tell it something")
+})
+
+test("working spins and blocked pulses, resting on frame 0", () => {
+  assert.equal(M.statusIcon("working"), "◐")
+  assert.equal(M.statusIcon("working", 1), "◓")
+  assert.equal(M.statusColor("blocked", 0), M.RED)
+  assert.equal(M.statusColor("blocked", M.PULSE_FRAMES), M.RED_DIM)
+  assert.equal(M.statusColor("blocked", M.PULSE_FRAMES * 2), M.RED)
 })
 
 test("ageText matches the overlay's units", () => {
