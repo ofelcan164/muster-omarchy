@@ -4,8 +4,9 @@ An Omarchy shell plugin that brings
 [Muster](https://github.com/ofelcan164/muster)'s view of herdr agents out of
 the herdr popup and onto the desktop.
 
-**Status: M2 in progress** (bar widget and read-only panel, see
-[the plan](docs/plan.md)). Not yet tried on an Omarchy machine.
+**Status: M2 written, not yet tried on an Omarchy machine.** The bar widget
+and read-only panel are here and tested headless; see [the plan](docs/plan.md)
+for what is next.
 
 ## The idea in one paragraph
 
@@ -28,6 +29,69 @@ be the thirteenth. What none of them has is what Muster already works out:
 - **The dependency chain:** which work depends on which repo, and when that work landed.
 
 The plan is built around that gap. See [the prior art](docs/research/prior-art.md).
+
+## What it does today (M2)
+
+- **In the bar:** Muster's diamond with the count of what needs you, coloured
+  by the most urgent reason (red blocked, orange landed, yellow stopped, green
+  done). It is dim when nothing needs you and a hollow `◇` with no count when
+  the snapshot is stale. It is hidden only while there is no snapshot at all.
+  The tooltip lists the rows.
+- **In the panel:** the ribbon exactly as Muster's overlay draws it (your
+  dismissals and picked colours included), the orchestrator with what it last
+  said, and one line per repo with its agents counted by status.
+- **Jumping:** click a row, or `j`/`k` then `enter`, to land on its pane.
+  herdr's window comes forward, or opens if there is none. `esc` closes.
+
+It reads Muster's files and runs `muster`; it holds no herdr connection of its
+own. Only the default herdr session is shown for now.
+
+## Install
+
+Needs [Muster](https://github.com/ofelcan164/muster) installed in herdr, and
+Omarchy 4.
+
+```bash
+omarchy plugin add https://github.com/ofelcan164/muster-omarchy --enable
+```
+
+Two settings, both usually left alone:
+
+| Setting | Default | What it is |
+|---|---|---|
+| `stateDir` | empty, meaning `~/.local/state/herdr/plugins/muster` | Where `musterd` writes `snapshot.json` |
+| `muster` | `muster` | The binary to run. A bare name is looked up on `PATH`, then in the tab bar entry `muster install` wrote to herdr's config |
+
+```bash
+omarchy bar set io.github.ofelcan164.muster stateDir ~/some/other/dir
+```
+
+## Layout
+
+```
+manifest.json        bar-widget, entry BarWidget.qml
+BarWidget.qml        the diamond and count; loads the panel
+Panel.qml            ribbon, orchestrator, repos; keys and clicks
+Data.qml             watches snapshot.json and ui.json, the stale clock
+Actions.qml          one queue of commands, each through bin/muster-omarchy
+lib/muster.js        everything worked out from Muster's files, plain JS
+bin/muster-omarchy   finds muster, runs `muster jump`, raises herdr's window
+tests/               node tests, a headless QML run, the snapshot fixture
+```
+
+## Development
+
+```bash
+node --test tests/*.test.js         # lib/muster.js and bin/muster-omarchy
+python3 tests/qml/run.py            # the real QML, headless (pip install PySide6-Essentials)
+omarchy plugin validate .           # the manifest, as the shell checks it
+tests/fixtures/regen.sh ~/src/muster   # rebuild the fixture after Muster's model changes
+```
+
+`tests/qml/stubs/` stands in for Quickshell and Omarchy's `qs.*` modules with
+the same properties, signals and functions, read from `omacom/omarchy` at
+`93e8cd5`. The run fails on any QML warning, so a typo in a property or a
+binding that throws is caught before it reaches a shell.
 
 ## Reading order
 

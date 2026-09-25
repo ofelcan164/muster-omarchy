@@ -43,7 +43,7 @@ Each spike answers one question with a command, and its result goes into
 | # | Question | How to check |
 |---|---|---|
 | S1 | Named session socket path | `herdr --session x`, then `ls ~/.config/herdr/sessions/x/` and `env` inside a pane of it (`HERDR_SOCKET_PATH`). |
-| S2 | Raising herdr's terminal window | `hyprctl clients -j`, then match `title` against Omarchy's `window_title = "{hostname}: {workspace}"`, then `hyprctl dispatch focuswindow address:<addr>`. Also read `jankeesvw/omarchy-herdr` `bin/` for its method. |
+| S2 | Raising herdr's terminal window | `hyprctl clients -j`, then match `title` against Omarchy's `window_title = "{hostname}: {workspace}"`, then `hyprctl dispatch focuswindow address:<addr>`. Also read `jankeesvw/omarchy-herdr` `bin/` for its method. **Partly answered from source (M2 notes):** Omarchy 4's `hyprctl dispatch` takes Lua, so `focuswindow` is out; still to run on a machine. |
 | S3 | Whether `FileView` sees atomic rename-over writes | A minimal QML `FileView { path: …/snapshot.json; watchChanges: true }` that logs `onFileChanged` while `musterd` runs. |
 | S4 | Muster's key install under Omarchy's `prefix = "ctrl+space"` and existing `tab_bar_right` | `muster install` on the Omarchy default config, then `herdr config check`, then check that `muster badge` shows in the tab bar. |
 | S5 | How long keys are gone after `omarchy-refresh-herdr` | Run it, try `ctrl+space m`, restart herdr, try again. |
@@ -125,6 +125,47 @@ Each spike answers one question with a command, and its result goes into
 - **Done when:** installed with `omarchy plugin add <this repo> --enable`, it
   shows the same ribbon, orchestrator and counts as Muster's overlay, and a
   click lands on the pane.
+
+### M2 implementation notes
+
+Built against `omacom/omarchy` `93e8cd5` and Muster `ea5b8d6`, and not yet
+run on an Omarchy machine. The spikes are still open; where M2 depends on
+one, it works either way:
+
+- **S2, raising the window.** `jankeesvw/omarchy-herdr` shows that Omarchy
+  4's `hyprctl` parses its argument as Lua, so the command is
+  `hyprctl dispatch "hl.dsp.focus({ window = 'address:<addr>' })"`, after the
+  same call with `workspace = '<name>'` so a window elsewhere comes into view.
+  The window is found by walking each default-session `herdr` client up its
+  process tree to the first pid Hyprland knows, not by title, which cannot
+  tell the default session's window from a named one's. No window means `omarchy-launch-terminal-herdr`, which
+  attaches to the server `muster jump` already moved. This lives in
+  `bin/muster-omarchy`.
+- **S3, whether `FileView` sees the rename.** Omarchy watches its own
+  atomically written `shell.json` the same way, which suggests it does.
+  Either way, the 5 s clock tick rereads a snapshot older than 12 s, so a
+  missed rename costs a few seconds, not a stuck widget.
+
+Decisions the plan left open:
+
+- **When the widget hides.** Only while there is no snapshot file. Once there
+  is one, the diamond stays in the bar, dim when nothing needs you, so the
+  panel is always a click away. The keybinding (M4) was the only other way in.
+- **Snapshots from before `snapshot_version`.** Read as version 0, the same
+  shape as 1 without the field, so M2 works with today's Muster. A version
+  newer than the widget knows asks you to update the widget
+  (`omarchy plugin update`), since that is the side that is behind.
+- **Finding `muster`.** herdr installs plugins outside `PATH`, so a bare
+  `muster` that isn't on `PATH` falls back to the absolute path in the tab
+  bar entry `muster install` writes to herdr's config.
+- **Jump needs nothing from M1.** `muster --state-dir <s> jump <pane>`
+  already works from a plain shell for the default session: Muster falls back
+  to `~/.config/herdr/herdr.sock`.
+- **Ribbon cap.** Four rows, as in the overlay, then "and N more in Muster".
+- **Colours.** The reason, status and repo colours are Muster's own, so a
+  row reads the same in both places. The panel's surface follows the Omarchy
+  theme. The palette was picked for a dark background and may need a pass
+  on light themes.
 
 ## M3: actions in the panel (this repo)
 
