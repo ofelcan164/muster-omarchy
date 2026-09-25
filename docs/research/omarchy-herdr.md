@@ -66,3 +66,13 @@ Hyprland. Prior art shows both halves:
 - Udder moves you to the right desktop.
 
 Omarchy's own `omarchy-launch-terminal-herdr` attaches to the persistent session, which is a reasonable fallback when no window exists.
+
+One detail from jankeesvw's `bin/herdr-sessions` (`49fca4a`) that the spike
+plan had wrong: Omarchy 4's `hyprctl dispatch` parses its argument as Lua, so
+`hyprctl dispatch focuswindow address:<addr>` is a syntax error. The working
+form is `hyprctl dispatch "hl.dsp.focus({ window = 'address:<addr>' })"`, and
+`hl.dsp.focus({ workspace = '<name>' })` first, because focusing a window does
+not bring its workspace into view. It finds the window by walking the herdr
+client's process tree up to a pid in `hyprctl clients -j`. The window title
+would be less reliable: `{hostname}: {workspace}` cannot tell the default
+session's window from a named session's.

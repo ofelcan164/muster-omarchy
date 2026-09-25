@@ -1,0 +1,265 @@
+#!/bin/bash
+# The widget's one way out to the rest of the desktop. Every action is a muster
+# CLI call, so the panel and Muster's own overlay share one implementation;
+# this script only finds that binary and, after a jump, brings herdr's window
+# forward, which Muster cannot do from inside herdr.
+#
+#   muster-omarchy [--muster CMD] [--state-dir DIR] jump <pane-id|orchestrator>
+#   muster-omarchy [--muster CMD] [--state-dir DIR] tell <text>
+#   muster-omarchy [--muster CMD] [--state-dir DIR] report|dismiss <pane-id>
+#   muster-omarchy raise
+#   muster-omarchy which [--muster CMD]
+#
+# Errors are one line on stderr and a non-zero exit: the panel shows that line.
+# What a command did, when it says, is the last line on stdout.
+# Only the default herdr session is handled until Muster has --session.
+
+set -uo pipefail
+
+MUSTER="muster"
+STATE_DIR=""
+
+die() {
+  printf '%s\n' "$*" >&2
+  exit 1
+}
+
+# expand_home turns a leading ~/ into $HOME/, which the widget's settings may
+# carry and nothing downstream expands.
+expand_home() {
+  local p="$1"
+  # shellcheck disable=SC2088 # a literal ~ is exactly what is being matched
+  if [[ $p == "~" ]]; then
+    p=$HOME
+  elif [[ $p == "~/"* ]]; then
+    p="$HOME/${p#\~/}"
+  fi
+  printf '%s' "$p"
+}
+
+# resolve_muster prints the muster binary to run. A path is taken as given. A
+# bare name is looked up on PATH, and the default name falls back to the path
+# `muster install` wrote into herdr's tab bar: herdr installs plugins outside
+# PATH, and that entry is the one place Muster records where it lives.
+resolve_muster() {
+  local want
+  want=$(expand_home "$MUSTER")
+  if [[ $want == */* ]]; then
+    [[ -x $want ]] || return 1
+    printf '%s' "$want"
+    return 0
+  fi
+  if command -v -- "$want" >/dev/null 2>&1; then
+    command -v -- "$want"
+    return 0
+  fi
+  [[ $want == muster ]] || return 1
+
+  local config="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/config.toml" found
+  [[ -r $config ]] || return 1
+  found=$(grep -o "command = \"'[^'\"]*' --state-dir '[^'\"]*' badge" "$config" 2>/dev/null |
+    head -n 1 | sed -E "s/^command = \"'([^']*)'.*/\\1/")
+  [[ -n $found && -x $found ]] || return 1
+  printf '%s' "$found"
+}
+
+# is_default_client says a command line is a herdr client attached to the
+# default session: `herdr` with nothing after it but flags. `herdr server` is
+# the background process, `herdr pane list` and friends are one-shot CLI calls,
+# and --session or --remote names a different server.
+is_default_client() {
+  local -a words
+  read -r -a words <<<"${1-}"
+  ((${#words[@]})) || return 1
+  [[ ${words[0]##*/} == herdr ]] || return 1
+  if ((${#words[@]} > 1)); then
+    [[ ${words[1]} == -* ]] || return 1
+  fi
+  local w
+  for w in "${words[@]:1}"; do
+    case $w in
+    --session | --session=* | --remote | --remote=*) return 1 ;;
+    esac
+  done
+  return 0
+}
+
+# herdr_window prints "address<TAB>workspace" for the Hyprland window showing
+# the default session, the most recently focused one when there are several.
+# A window belongs to a process, and the herdr client runs somewhere under it
+# (the terminal, maybe a shell between), so each client is walked up to the
+# first ancestor that owns a window.
+herdr_window() {
+  local clients
+  clients=$(hyprctl clients -j 2>/dev/null) || return 1
+  [[ -n $clients ]] || return 1
+
+  declare -A window_of=()
+  declare -A rank_of=()
+  local pid address workspace rank
+  while IFS=$'\t' read -r pid address workspace rank; do
+    [[ $pid =~ ^[0-9]+$ ]] || continue
+    window_of[$pid]=$address$'\t'$workspace
+    rank_of[$pid]=$rank
+  done < <(jq -r '.[] | select(.pid > 0)
+    | "\(.pid)\t\(.address)\t\(.workspace.name // "")\t\(.focusHistoryID // 999999)"' <<<"$clients" 2>/dev/null)
+  ((${#window_of[@]})) || return 1
+
+  declare -A parent_of=()
+  local -a herdrs=()
+  local ppid args
+  while read -r pid ppid args; do
+    [[ $pid =~ ^[0-9]+$ ]] || continue
+    parent_of[$pid]=$ppid
+    is_default_client "$args" && herdrs+=("$pid")
+  done < <(ps -eo pid=,ppid=,args= 2>/dev/null)
+
+  local best="" best_rank="" p hops
+  for pid in "${herdrs[@]}"; do
+    p=$pid
+    for ((hops = 0; hops < 12; hops++)); do
+      if [[ -n ${window_of[$p]-} ]]; then
+        if [[ -z $best_rank ]] || ((rank_of[$p] < best_rank)); then
+          best=${window_of[$p]}
+          best_rank=${rank_of[$p]}
+        fi
+        break
+      fi
+      p=${parent_of[$p]-}
+      [[ -n $p && $p != 0 && $p != 1 ]] || break
+    done
+  done
+  [[ -n $best ]] || return 1
+  printf '%s\n' "$best"
+}
+
+# raise brings herdr's window forward, or opens one on the default session
+# when there is none. Omarchy's launcher attaches to the running server, which
+# has already moved to the pane by the time the window comes up.
+cmd_raise() {
+  local address="" workspace=""
+  if command -v hyprctl >/dev/null 2>&1; then
+    IFS=$'\t' read -r address workspace < <(herdr_window) || true
+  fi
+
+  # Both values are spliced into a Lua expression (Omarchy 4's hyprctl parses
+  # its argument as Lua), so they are checked for shape rather than escaped.
+  if [[ $address =~ ^0x[0-9a-fA-F]+$ ]]; then
+    # Focusing a window does not bring its workspace into view, so switch
+    # first. That also lands on the right monitor.
+    if [[ $workspace =~ ^(special:)?[A-Za-z0-9_-]{1,32}$ ]]; then
+      hyprctl dispatch "hl.dsp.focus({ workspace = '$workspace' })" >/dev/null 2>&1
+    fi
+    hyprctl dispatch "hl.dsp.focus({ window = 'address:$address' })" >/dev/null 2>&1
+    return 0
+  fi
+
+  launch_herdr
+}
+
+# launch_herdr opens a terminal on the default session, starting its server if
+# none is running.
+launch_herdr() {
+  command -v omarchy-launch-terminal-herdr >/dev/null 2>&1 ||
+    die "no herdr window to bring forward, and omarchy-launch-terminal-herdr is not installed"
+  setsid omarchy-launch-terminal-herdr >/dev/null 2>&1 &
+  disown
+}
+
+# check_pane refuses anything that is not a herdr pane id, or "orchestrator",
+# Muster's own name for one. Ids go over argv, never through a shell, so this
+# only keeps out what could read as a flag or is plainly not an id.
+check_pane() {
+  [[ ${1-} =~ ^[A-Za-z0-9_][A-Za-z0-9_.:-]{0,63}$ ]] || die "not a pane id: ${1-}"
+}
+
+# What the last run_muster failure was: DOWN is true when herdr's socket could
+# not be reached, and MESSAGE is the one line worth showing.
+DOWN=false
+MESSAGE=""
+
+# run_muster runs one muster command with the state dir in front. Its stdout
+# passes through; a failure sets DOWN and MESSAGE and returns non-zero.
+run_muster() {
+  local muster
+  muster=$(resolve_muster) || die "muster not found: set this widget's muster setting to its path"
+
+  local -a args=()
+  [[ -n $STATE_DIR ]] && args+=(--state-dir "$(expand_home "$STATE_DIR")")
+
+  # stderr is captured and stdout goes where ours does, through fd 3.
+  local err status
+  { err=$("$muster" "${args[@]}" "$@" 2>&1 1>&3 3>&-); status=$?; } 3>&1
+  ((status == 0)) && return 0
+
+  DOWN=false
+  if [[ $err == *"unknown command"* ]]; then
+    # muster prints its whole usage after this, so its last line says nothing.
+    MESSAGE="this needs Muster 0.3.0 or newer: run the Update Muster action in herdr"
+  elif [[ $err == *"dial "*"connect:"* ]]; then
+    DOWN=true
+    MESSAGE="herdr is not running"
+  else
+    MESSAGE=$(printf '%s' "$err" | tail -n 1)
+    MESSAGE=${MESSAGE:-muster $1 failed}
+  fi
+  return 1
+}
+
+cmd_jump() {
+  local target="${1-}"
+  check_pane "$target"
+  if ! run_muster jump "$target" >/dev/null; then
+    # With no server there is nothing to jump to, but opening herdr is what
+    # asking to go there means. The pane ids belong to the server that went
+    # away, so say how to finish rather than claiming the jump happened.
+    if $DOWN; then
+      launch_herdr
+      die "herdr was not running, so it is starting. Jump again once your agents are back."
+    fi
+    die "$MESSAGE"
+  fi
+  cmd_raise
+}
+
+cmd_tell() {
+  local text="${1-}"
+  [[ -n ${text//[[:space:]]/} ]] || die "nothing to send"
+  run_muster tell "$text" || die "$MESSAGE"
+}
+
+cmd_pane_action() {
+  local action=$1 pane="${2-}"
+  check_pane "$pane"
+  run_muster "$action" "$pane" || die "$MESSAGE"
+}
+
+cmd_which() {
+  resolve_muster || die "muster not found"
+  printf '\n'
+}
+
+while (($#)); do
+  case $1 in
+  --muster)
+    (($# >= 2)) || die "--muster needs a value"
+    [[ -n $2 ]] && MUSTER=$2
+    shift 2
+    ;;
+  --state-dir)
+    (($# >= 2)) || die "--state-dir needs a value"
+    STATE_DIR=$2
+    shift 2
+    ;;
+  *) break ;;
+  esac
+done
+
+case ${1-} in
+jump) cmd_jump "${2-}" ;;
+tell) cmd_tell "${2-}" ;;
+report | dismiss) cmd_pane_action "$1" "${2-}" ;;
+raise) cmd_raise ;;
+which) cmd_which ;;
+*) die "usage: muster-omarchy [--muster CMD] [--state-dir DIR] jump <pane-id|orchestrator> | tell <text> | report <pane-id> | dismiss <pane-id> | raise | which" ;;
+esac

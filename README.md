@@ -1,64 +1,143 @@
-# muster-omarchy
+# Muster for Omarchy
 
-Planning and research for an Omarchy shell plugin that brings
-[Muster](https://github.com/ofelcan164/muster)'s view of herdr agents out of
-the herdr popup and onto the desktop.
+[Muster](https://github.com/ofelcan164/muster)'s overlay in the Omarchy bar.
 
-**Status: planning only.** This repository holds Markdown and nothing else.
+Muster is a herdr plugin: press `prefix+m` in herdr and it shows every agent
+across every repo, ranks what needs you, and keeps the orchestrator in view.
+That overlay lives inside herdr, so you only see it while you are in your
+terminal. This plugin puts the same screen on the desktop. A diamond in the bar
+counts what needs you. Click it and the panel shows Muster's overlay, drawn the
+same way. Pick an agent and you land on its pane in herdr.
 
-## The idea in one paragraph
+## Requirements
 
-Muster is a herdr plugin: an overlay you open inside herdr that shows every
-agent across every repo, ranks what needs you, and keeps the orchestrator and
-the dependencies between repos in view. That overlay is modal, and you only see
-it once you have opened it. This plugin would put the same picture in the
-Omarchy bar and in a panel that drops from it, so you can see what needs you
-without first switching to herdr.
+- Omarchy 4
+- herdr
+- Muster 0.3.0 or newer, installed in herdr. With an older Muster the bar, the
+  panel and jumping work, but `i`, `t` and `x` ask you to update it.
 
-## The finding that shapes everything
+## Install
 
-A dozen Omarchy plugins already show herdr agents in the bar, and the best of
-them are good: counts and colours, click to jump, desktop notifications,
-remote sessions, a pinned floating card. A plugin that only lists agents would
-be the thirteenth. What none of them has is what Muster already works out:
-- **Repo identity:** a colour and sigil per repo.
-- **Ranked attention with dismissals:** what needs you, in order, less what you've already dealt with.
-- **The orchestrator:** its last message and a way to send it one.
-- **The dependency chain:** which work depends on which repo, and when that work landed.
+Muster first, in herdr:
 
-The plan is built around that gap. See [the prior art](docs/research/prior-art.md).
+```sh
+herdr plugin install ofelcan164/muster
+```
 
-## Reading order
+Then this plugin, in Omarchy:
 
-1. [`docs/plan.md`](docs/plan.md): architecture, settled decisions, spikes,
-   and milestones M0–M5 with tasks and done criteria.
-2. [`docs/research/prior-art.md`](docs/research/prior-art.md): the existing
-   herdr plugins for Omarchy and what each already covers.
-3. [`docs/research/omarchy-shell-plugins.md`](docs/research/omarchy-shell-plugins.md):
-   how Omarchy 4 plugins work (manifest, kinds, IPC, bar modules,
-   notifications, keybindings).
-4. [`docs/research/omarchy-herdr.md`](docs/research/omarchy-herdr.md): how
-   Omarchy already ships and configures herdr, and where that meets Muster.
-5. [`docs/research/muster-interfaces.md`](docs/research/muster-interfaces.md):
-   what Muster exposes to a process outside herdr today, and what it lacks.
+```sh
+omarchy plugin add https://github.com/ofelcan164/muster-omarchy.git --enable
+```
 
-## Sources
+The widget joins the right side of the bar. Neither install touches the
+other's configuration, and you can remove either one without breaking the
+other.
 
-Everything here was read from source on 2026-09-24, not recalled:
+## Usage
 
-| Source | Commit |
+### The bar
+
+| Shows | Means |
 |---|---|
-| [`omacom/omarchy`](https://github.com/omacom/omarchy) (manual, `docs/omarchy-shell.md`, `shell/`, `config/`, `default/`, `bin/`) | `28ceaae`, 2026-09-23, `version` reads `4.0.0.alpha` |
-| [`omacom/omarchy-plugin-marketplace`](https://github.com/omacom/omarchy-plugin-marketplace) `site/catalog.json` (4110 plugins) | cloned 2026-09-24 |
-| [`jankeesvw/omarchy-herdr`](https://github.com/jankeesvw/omarchy-herdr) | `49fca4a`, 2026-09-18 |
-| [`stappmus/Udder`](https://github.com/stappmus/Udder) | `2aaac75`, 2026-09-21 |
-| [`njpatel/omaherdr`](https://github.com/njpatel/omaherdr) | `c20d9b0`, 2026-09-16 |
-| [`meviusisback/agent-orchestr`](https://github.com/meviusisback/agent-orchestr) | `cb35aaa`, 2026-09-16 |
-| [`FerC10110/omarchy-hypr-rules-studio`](https://github.com/FerC10110/omarchy-hypr-rules-studio) (a third-party plugin as reference) | `196d814`, 2026-09-22 |
-| [`ofelcan164/muster`](https://github.com/ofelcan164/muster) | `29c602f`, after #15 |
+| `◆ 3`, coloured | Three rows need you. The colour is the most urgent one's: red blocked, orange landed, yellow stopped, green done |
+| `◆`, dim | Nothing needs you |
+| `◇`, dim | Muster's snapshot is 30 seconds old or more, so `musterd` is not running |
+| `◆ !` | The snapshot can't be read, or it comes from a Muster newer than this plugin (update the plugin) |
 
-The Omarchy manual website and a plugin author's blog could not be fetched from
-the environment this was researched in. Their content was read from the
-manual's source in the Omarchy repo instead. Omarchy 4 is recent and moves
-quickly, so recheck anything load-bearing against a current checkout before
-building on it.
+Hover it for one line per row. The widget stays hidden until Muster has
+written its first snapshot.
+
+### The panel
+
+Left-click the diamond. The panel is Muster's overlay in Muster's own colours,
+whatever your Omarchy theme:
+
+- **The title line:** workspaces, agents, and how many rows need you.
+- **NEEDS YOU:** the ranked rows, less any you have dismissed, each with why it
+  is there and what the agent said.
+- **Agents & workspaces:** one tile per agent (workspace and pane, repo and
+  branch, status, task, what it depends on) and one per workspace with no
+  agent. Tiles follow the sort you picked with `s` in the overlay.
+- **Orchestrator:** pinned to the bottom. Who is coordinating, their status,
+  and their last message.
+
+Click any row, tile or the orchestrator to jump there. herdr's window comes
+forward, or opens if you have none, and the panel closes. If herdr is not
+running, a jump starts it; jump again once your agents are back.
+
+| Key | Does |
+|---|---|
+| `j` / `k`, arrows | Move the selection |
+| `g` / `G` | First / last |
+| `enter` | Jump to the selection |
+| `1`–`9` | Jump to that ribbon row |
+| `M` | Jump to the orchestrator |
+| `i` | Message the orchestrator (`enter` sends, `esc` cancels) |
+| `t` | Tell the orchestrator about the selected landed row, or the only one |
+| `x` | Dismiss the selected ribbon row until its status changes |
+| `e` | Expand or fold the orchestrator's last message |
+| `esc` | Fold the message, then close |
+
+`i`, `t` and `x` run the same `muster` commands as the overlay's keys, so both
+screens agree: a row dismissed in the panel is gone from the overlay, and the
+other way round.
+
+## Configure
+
+Two settings, both usually left alone:
+
+| Setting | Default | What it is |
+|---|---|---|
+| `stateDir` | empty, meaning `~/.local/state/herdr/plugins/muster` | Where `musterd` writes `snapshot.json` |
+| `muster` | `muster` | The `muster` binary. A bare name is looked up on `PATH`, then in the tab bar entry `muster install` wrote to herdr's config |
+
+```sh
+omarchy bar set io.github.ofelcan164.muster stateDir ~/some/other/dir
+omarchy bar move io.github.ofelcan164.muster --section right
+```
+
+Only herdr's default session is shown.
+
+## What it runs
+
+The plugin reads two files Muster writes, `snapshot.json` and `ui.json`, and
+keeps no herdr connection of its own. Everything else goes through
+`bin/muster-omarchy`, which runs:
+
+- `muster jump`, `tell`, `report` and `dismiss`, for the panel's actions
+- `hyprctl`, to find herdr's window and bring it forward after a jump
+- `omarchy-launch-terminal-herdr`, when a jump finds herdr not running
+
+It reads herdr's config to find the `muster` binary and never writes it. It
+writes nothing of Omarchy's, needs no root, and makes no network requests.
+
+## Remove
+
+```sh
+omarchy plugin remove io.github.ofelcan164.muster
+```
+
+Muster stays installed in herdr. To remove it too, run `muster uninstall`,
+which takes back its keybindings and skill, then remove it from herdr the way
+you remove any herdr plugin.
+
+## Development
+
+```sh
+node --test tests/*.test.js     # lib/muster.js and bin/muster-omarchy
+python3 tests/qml/run.py        # the real QML, headless; needs PySide6
+omarchy plugin validate .
+qmllint -I "$OMARCHY_PATH/shell" BarWidget.qml Panel.qml
+tests/fixtures/regen.sh ~/src/muster   # rebuild the fixture after Muster's model changes
+```
+
+`lib/muster.js` is the overlay's drawing rules in plain JavaScript. Each
+function names the Go function in Muster it mirrors, and the tests run it
+against a snapshot marshalled from Muster's own types. `tests/qml/stubs/`
+stands in for Quickshell and Omarchy's `qs.*` modules so the QML can load
+without a shell, and the run fails on any QML warning.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
