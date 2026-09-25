@@ -12,12 +12,15 @@ BarWidget {
 
   readonly property var view: muster.barView
 
-  // The shell toggles a bar widget through these three (`omarchy-shell shell
-  // toggle io.github.ofelcan164.muster`), so they live on the entry point.
+  // The shell drives a bar widget's panel through these (`omarchy-shell shell
+  // summon|hide io.github.ofelcan164.muster`, and switching between popouts),
+  // so they live on the entry point and forward to the loaded panel.
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
+  readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
   function open() { if (panelLoader.item) panelLoader.item.open() }
   function close() { if (panelLoader.item) panelLoader.item.close() }
   function toggle() { if (panelLoader.item) panelLoader.item.toggle() }
+  function closeForPopoutSwitch() { if (panelLoader.item) panelLoader.item.closeForPopoutSwitch() }
 
   function injectPanel() {
     var target = panelLoader.item
@@ -63,6 +66,8 @@ BarWidget {
     foreground: root.view.color !== "" ? root.view.color : (root.bar ? root.bar.barForeground : Color.foreground)
     dimmed: root.view.dimmed
     tooltipText: root.view.tooltip
-    onPressed: function(buttonCode) { root.toggle() }
+    onPressed: function(buttonCode) {
+      if (buttonCode === Qt.LeftButton) root.toggle()
+    }
   }
 }

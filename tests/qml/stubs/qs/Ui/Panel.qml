@@ -20,6 +20,7 @@ Item {
   function open() { panelController.show() }
   function close() { panelController.hide() }
   function toggle() { opened ? close() : open() }
+  function closeForPopoutSwitch() { popoutSwitchClosing = true; close(); popoutSwitchClosing = false }
   function switchPanel(direction) {
     if (bar && typeof bar.switchPanelFrom === "function") return bar.switchPanelFrom(root, direction)
     return false

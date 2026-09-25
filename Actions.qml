@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell
 import Quickshell.Io
 
 // Every command the panel runs, one at a time, in the order asked. Each goes
