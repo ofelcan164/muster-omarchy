@@ -1,9 +1,9 @@
 # Implementation plan
 
 The work is split into milestones M0–M5. Each milestone lists the repo it
-lands in, its tasks, and when it is done. M0, M1 and M4 are changes to
-`ofelcan164/muster`; M2, M3 and M5 are this repo. Background for every
-decision is in [`research/`](research/).
+lands in, its tasks, and when it is done. M0 and M1 are changes to
+`ofelcan164/muster`; M2 to M5 are this repo. Background for every decision is
+in [`research/`](research/).
 
 ## Architecture
 
@@ -20,6 +20,11 @@ herdr ──events──▶ musterd ──writes──▶ <state>/snapshot.json,
   dismissals, colours and the orchestrator all come from Muster's files.
 - **Every action is a `muster` CLI call**, so the overlay and the widget share
   one implementation.
+- **Two plugins, two installs.** Muster is installed in herdr, through herdr's
+  plugin install; this plugin is installed in Omarchy afterwards, through
+  Omarchy's plugin marketplace. Neither writes the other's config: Muster
+  knows nothing of Omarchy, and anything Omarchy-side (the widget, a
+  keybinding, health checks) belongs to this plugin.
 - `<state>` is `~/.local/state/herdr/plugins/muster`, overridable by the
   `stateDir` setting. M1–M4 use the default herdr session only.
 
@@ -32,7 +37,8 @@ herdr ──events──▶ musterd ──writes──▶ <state>/snapshot.json,
 | Kinds | `bar-widget` only. The panel is loaded by the widget, as in `omarchy-hypr-rules-studio`. |
 | Data source | `FileView` on `snapshot.json` and `ui.json`. Muster adds `snapshot_version` (M1). The widget shows "update Muster" for any version it doesn't know. |
 | Staleness | `now - generated_at > 30s` shows a stale state, never a count. |
-| Keybinding | `SUPER + CTRL + M` runs `omarchy-shell shell toggle io.github.ofelcan164.muster`, written by `muster install --omarchy` (M4). |
+| Installation | Separate, each through its own tool's marketplace: Muster in herdr first, then this plugin in Omarchy. Muster never writes Omarchy's config and this plugin never writes herdr's. |
+| Keybinding | `SUPER + CTRL + M` runs `omarchy-shell shell toggle io.github.ofelcan164.muster`, set up by this plugin (M4), never by Muster. |
 | Notifications | None until M5, and then only for `LANDED` rows. |
 
 ## Spikes (run on an Omarchy 4 machine before M2)
@@ -61,14 +67,11 @@ Each spike answers one question with a command, and its result goes into
       `needs-you`, `working`, `idle`.
   - Tests: one per class, a stale snapshot, dismissed rows excluded, and
     output that parses as JSON.
-  - README: an inline Omarchy bar module:
-    ```json
-    { "id": "muster", "type": "command",
-      "exec": "muster --state-dir ~/.local/state/herdr/plugins/muster badge --json",
-      "interval": 5, "onClick": "omarchy-launch-terminal-herdr" }
-    ```
-- **Done when:** that module shows in the Omarchy bar, and the count matches
-  the herdr tab bar badge.
+  - No Omarchy module in Muster's README: a module pasted into the bar by
+    hand would be a third way in, around Omarchy's marketplace. The Omarchy
+    side is this plugin. `badge --json` stays for any bar that wants it.
+- **Done when:** the count matches the herdr tab bar badge.
+- **Status:** in review, `ofelcan164/muster#17`.
 
 ## M1: CLI for an outside caller (muster repo)
 
@@ -199,21 +202,33 @@ yet run on an Omarchy machine.
   `omarchy-launch-terminal-herdr`, and says to jump again once the agents
   are back: the pane ids belong to the server that went away.
 
-## M4: `muster install --omarchy` (muster repo)
+## M4: the keybinding, health and publishing (this repo)
+
+This used to be `muster install --omarchy`, Muster writing Omarchy's
+keybindings and `muster doctor` checking Omarchy. That tied the two installs
+together, so it moved here: Muster stays a herdr plugin that knows nothing of
+Omarchy.
 
 - **Tasks:**
-  - Detect Omarchy: `$OMARCHY_PATH` is set, or `omarchy-shell` is on `PATH`.
-  - Write a marked block to `~/.config/hypr/bindings.lua` containing the
-    `o.bind` line, with a backup, matching how Muster writes the herdr config.
-  - `uninstall` removes the block.
-  - `muster doctor` reports:
-    - whether the plugin is installed (`omarchy plugin list --json`);
-    - whether the bindings block is present;
-    - whether the herdr keys are missing after an `omarchy-refresh-herdr`
-      (S5), with the fix being `muster install`.
+  - **The keybinding.** `omarchy plugin add` runs no install hook, so first
+    find out whether Omarchy 4 lets a plugin declare a binding (in the
+    manifest, or through a shell API). If it does, use that. If not, the
+    README gives the one `o.bind` line to add to `~/.config/hypr/bindings.lua`
+    rather than the plugin editing the user's Hyprland config.
+  - **Health, in the panel.** The panel already says when there is no
+    snapshot (Muster not installed or herdr not running) and when Muster is
+    too old. Add: herdr's keys gone after `omarchy-refresh-herdr` (S5), with
+    the fix being herdr's **Install Muster's keybindings** action. The check
+    only reads herdr's config; it never writes it.
+  - **Publishing.** Omarchy's marketplace lists public repos with a manifest,
+    README, license, one category and one to three tags, after a security scan
+    of an exact commit and a maintainer's approval. This repo is private, so
+    making it public is the user's call; until then `omarchy plugin add
+    <url>` is the install.
 - **Done when:** a fresh Omarchy machine goes from nothing to working with
-  `omarchy plugin add … --enable` and `muster install --omarchy`, and back
-  with `muster uninstall`.
+  `herdr plugin install ofelcan164/muster` and then installing this plugin
+  from Omarchy's marketplace, and removing either one leaves the other
+  working.
 
 ## M5: after M3 is in daily use
 

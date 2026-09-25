@@ -55,12 +55,24 @@ own. Only the default herdr session is shown for now.
 
 ## Install
 
-Needs [Muster](https://github.com/ofelcan164/muster) installed in herdr, and
-Omarchy 4.
+Two installs, one in each tool, in this order:
 
-```bash
-omarchy plugin add https://github.com/ofelcan164/muster-omarchy --enable
-```
+1. **Muster, in herdr.** Install it the way you install any herdr plugin:
+
+   ```bash
+   herdr plugin install ofelcan164/muster
+   ```
+
+2. **This plugin, in Omarchy**, once Muster is running. From Omarchy's plugin
+   marketplace, or by URL:
+
+   ```bash
+   omarchy plugin add https://github.com/ofelcan164/muster-omarchy --enable
+   ```
+
+Neither install touches the other's config: Muster never writes Omarchy's
+files, and this plugin never writes herdr's. Removing one leaves the other
+working. Needs Omarchy 4.
 
 Two settings, both usually left alone:
 
