@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "io.github.ofelcan164.muster",
-  "name": "Muster",
+  "name": "Muster for herdr",
   "version": "0.1.0",
   "author": "Oscar Felcan",
   "license": "MIT",
@@ -12,7 +12,7 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Muster",
+    "displayName": "Muster for herdr",
     "description": "What needs you across every herdr agent, read from Muster's snapshot. Click a row to land on its pane.",
     "category": "AI",
     "aliases": ["muster", "herdr", "agents", "orchestrator"],
