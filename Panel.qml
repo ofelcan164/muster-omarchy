@@ -1038,9 +1038,11 @@ Panel {
               font: musterPanel.mono
             }
 
+            // No width of its own: the implicit one follows the query. Bound to
+            // contentWidth, which follows the field's own width, it never grew
+            // and scrolled the start of the query out of view.
             TextField {
               id: searchField
-              Layout.preferredWidth: contentWidth + musterPanel.cell
               padding: 0
               background: null
               readOnly: !musterPanel.searching
