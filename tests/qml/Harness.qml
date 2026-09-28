@@ -264,6 +264,12 @@ Item {
       lastProcess().process.finish(1, "", "muster: rename: no such pane")
       eq(p.notice, "could not mark: muster: rename: no such pane", "a failed mark says why")
 
+      k.press(0, "s", 0)
+      run = lastProcess()
+      eq(run.command.slice(-1), ["sort"], "s moves Muster on to the next sort")
+      run.process.finish(0, "sorted by a-z\n", "")
+      eq(p.notice, "sorted by a-z", "and says which")
+
       k.press(0, "M", 0)
       run = lastProcess()
       eq(run.command.slice(-2), ["jump", "orchestrator"], "M jumps to the orchestrator")

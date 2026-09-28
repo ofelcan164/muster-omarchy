@@ -19,8 +19,9 @@ it in your bar.
 
 - Omarchy 4
 - herdr
-- Muster 0.3.0 or newer, installed in herdr. With an older Muster the bar, the
-  panel and jumping work, but `i`, `t` and `x` ask you to update it.
+- Muster 0.4.0 or newer, installed in herdr. With an older Muster the bar, the
+  panel and jumping work, but the keys that act ask you to update it: `s`
+  needs 0.4.0, and `i`, `t`, `x` and `o` need 0.3.0.
 
 ## Install
 
@@ -66,7 +67,7 @@ whatever your Omarchy theme:
   is there and what the agent said.
 - **Agents & workspaces:** one tile per agent (workspace and pane, repo and
   branch, status, task, what it depends on) and one per workspace with no
-  agent. Tiles follow the sort you picked with `s` in the overlay.
+  agent, in the sort you last picked with `s` here or in the overlay.
 - **Orchestrator:** pinned to the bottom. Who is coordinating, their status,
   and their last message.
 
@@ -85,11 +86,12 @@ running, a jump starts it; jump again once your agents are back.
 | `i` | Message the orchestrator (`enter` sends, `esc` cancels) |
 | `t` | Tell the orchestrator about the selected landed row, or the only one |
 | `x` | Dismiss the selected ribbon row until its status changes |
+| `s` | Cycle the sort: first seen, a-z, attention, herdr |
 | `o` | Mark the selected agent as the orchestrator |
 | `e` | Expand or fold the orchestrator's last message |
 | `esc` | Fold the message, then close |
 
-`i`, `t`, `x` and `o` run the same `muster` commands as the overlay's keys, so both
+`i`, `t`, `x`, `o` and `s` run the same `muster` commands as the overlay's keys, so both
 screens agree: a row dismissed in the panel is gone from the overlay, and the
 other way round.
 
@@ -115,7 +117,7 @@ The plugin reads two files Muster writes, `snapshot.json` and `ui.json`, and
 keeps no herdr connection of its own. Everything else goes through
 `bin/muster-omarchy`, which runs:
 
-- `muster jump`, `tell`, `report`, `dismiss` and `mark-orchestrator`, for the panel's actions
+- `muster jump`, `tell`, `report`, `dismiss`, `mark-orchestrator` and `sort`, for the panel's actions
 - `hyprctl`, to find herdr's window and bring it forward after a jump
 - `omarchy-launch-terminal-herdr`, when a jump finds herdr not running
 

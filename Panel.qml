@@ -13,8 +13,8 @@ import "lib/muster.js" as Muster
 // bottom, on the overlay's own dark surface and in its colours, so the panel
 // and the popup in herdr read as the same screen.
 //
-// A click or enter lands on the selection, and /, i, t, x, o, e, M, g, G and
-// 1-9 do what they do in the overlay, through the same muster commands.
+// A click or enter lands on the selection, and /, s, i, t, x, o, e, M, g, G
+// and 1-9 do what they do in the overlay, through the same muster commands.
 Panel {
   id: musterPanel // not `root`: inside a Component, `root` would resolve to that
   moduleName: "io.github.ofelcan164.muster"
@@ -115,6 +115,8 @@ Panel {
     else if (text === "i") startCompose()
     else if (text === "t") report()
     else if (text === "o") markOrchestrator()
+    // The grid reorders when Muster rewrites ui.json and the watch sees it.
+    else if (text === "s") actions.sort(say)
     else if (text === "e") { if (orch.found && orch.said !== "") sayMore = !sayMore }
     else if (text === "g") { if (targetKeys.length > 0) selectedKey = targetKeys[0] }
     else if (text === "G") { if (targetKeys.length > 0) selectedKey = targetKeys[targetKeys.length - 1] }

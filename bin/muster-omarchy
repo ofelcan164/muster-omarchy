@@ -195,7 +195,7 @@ run_muster() {
   DOWN=false
   if [[ $err == *"unknown command"* ]]; then
     # muster prints its whole usage after this, so its last line says nothing.
-    MESSAGE="this needs Muster 0.3.0 or newer: run the Update Muster action in herdr"
+    MESSAGE="this needs a newer Muster: run the Update Muster action in herdr"
   elif [[ $err == *"dial "*"connect:"* ]]; then
     DOWN=true
     MESSAGE="herdr is not running"
@@ -234,6 +234,10 @@ cmd_pane_action() {
   run_muster "$action" "$pane" || die "$MESSAGE"
 }
 
+cmd_sort() {
+  run_muster sort || die "$MESSAGE"
+}
+
 cmd_which() {
   resolve_muster || die "muster not found"
   printf '\n'
@@ -259,7 +263,8 @@ case ${1-} in
 jump) cmd_jump "${2-}" ;;
 tell) cmd_tell "${2-}" ;;
 report | dismiss | mark-orchestrator) cmd_pane_action "$1" "${2-}" ;;
+sort) cmd_sort ;;
 raise) cmd_raise ;;
 which) cmd_which ;;
-*) die "usage: muster-omarchy [--muster CMD] [--state-dir DIR] jump <pane-id|orchestrator> | tell <text> | report <pane-id> | dismiss <pane-id> | mark-orchestrator <pane-id> | raise | which" ;;
+*) die "usage: muster-omarchy [--muster CMD] [--state-dir DIR] jump <pane-id|orchestrator> | tell <text> | report <pane-id> | dismiss <pane-id> | mark-orchestrator <pane-id> | sort | raise | which" ;;
 esac

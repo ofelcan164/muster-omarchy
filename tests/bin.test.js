@@ -131,7 +131,7 @@ test("a jump with herdr not running starts herdr and says the jump did not happe
   assert.deepEqual(s.waitForCalls(2), ["muster jump w1:p2", "launch"])
 })
 
-test("tell, report, dismiss and mark-orchestrator pass through to muster and print what it said", () => {
+test("tell, report, dismiss, mark-orchestrator and sort pass through to muster and print what it said", () => {
   const s = sandbox()
   let res = s.run(["--state-dir", "/state", "tell", "pull main; rerun $(id)"], { MUSTER_OUT: "sent to the orchestrator" })
   assert.equal(res.status, 0, res.stderr)
@@ -142,11 +142,14 @@ test("tell, report, dismiss and mark-orchestrator pass through to muster and pri
   assert.equal(res.status, 0, res.stderr)
   res = s.run(["--state-dir", "/state", "mark-orchestrator", "w2:p1"], { MUSTER_OUT: "marked w2:p1 as the orchestrator" })
   assert.equal(res.stdout.trim(), "marked w2:p1 as the orchestrator")
+  res = s.run(["--state-dir", "/state", "sort"], { MUSTER_OUT: "sorted by a-z" })
+  assert.equal(res.stdout.trim(), "sorted by a-z")
   assert.deepEqual(s.calls(), [
     "muster --state-dir /state tell pull main; rerun $(id)",
     "muster --state-dir /state report w3:p1",
     "muster --state-dir /state dismiss w2:p1",
-    "muster --state-dir /state mark-orchestrator w2:p1"
+    "muster --state-dir /state mark-orchestrator w2:p1",
+    "muster --state-dir /state sort"
   ])
 })
 
@@ -163,7 +166,7 @@ test("an action on a muster too old for it asks for an update", () => {
   const s = sandbox()
   const res = s.run(["tell", "hi"], { MUSTER_FAIL: 'muster: unknown command "tell"\nmuster — the Muster client\n\nusage:' })
   assert.equal(res.status, 1)
-  assert.equal(res.stderr.trim(), "this needs Muster 0.3.0 or newer: run the Update Muster action in herdr")
+  assert.equal(res.stderr.trim(), "this needs a newer Muster: run the Update Muster action in herdr")
 })
 
 test("an action with herdr not running says so and starts nothing", () => {

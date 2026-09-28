@@ -34,6 +34,7 @@ Item {
   function report(pane, onDone) { run(["report", String(pane)], onDone) }
   function dismiss(pane, onDone) { run(["dismiss", String(pane)], onDone) }
   function mark(pane, onDone) { run(["mark-orchestrator", String(pane)], onDone) }
+  function sort(onDone) { run(["sort"], onDone) }
 
   function pump() {
     if (current !== null || queue.length === 0) return
