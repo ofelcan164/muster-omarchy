@@ -133,9 +133,10 @@ Each spike answers one question with a command, and its result goes into
 
 ### M2 implementation notes
 
-Built against `omacom/omarchy` `93e8cd5` and Muster `ea5b8d6`, and not yet
-run on an Omarchy machine. The spikes are still open; where M2 depends on
-one, it works either way:
+Built against `omacom/omarchy` `93e8cd5` and Muster `ea5b8d6`. On
+2026-09-28 the bar and the panel ran on Omarchy 4.0.4 against Muster
+v0.3.1's demo session. The spikes are still open; where M2 depends on one,
+it works either way:
 
 - **S2, raising the window.** `jankeesvw/omarchy-herdr` shows that Omarchy
   4's `hyprctl` parses its argument as Lua, so the command is
@@ -190,8 +191,9 @@ Decisions the plan left open:
 
 ### M3 implementation notes
 
-Built on the M1 commands, released in Muster 0.3.0, and not yet run on an
-Omarchy machine.
+Built on the M1 commands, released in Muster 0.3.0. The tests cover each
+action, but none has run against live agents yet: the demo session is a
+named session, and these commands only reach the default one.
 
 - **Which row `t` reports** is the overlay's rule: the selected row when it is
   landed, else the only landed row, else nothing, with the overlay's notice.
@@ -224,9 +226,10 @@ Omarchy.
     only reads herdr's config; it never writes it.
   - **Publishing.** Omarchy's marketplace lists public repos with a manifest,
     README, license, one category and one to three tags, after a security scan
-    of an exact commit and a maintainer's approval. This repo is private, so
-    making it public is the user's call; until then `omarchy plugin add
-    <url>` is the install.
+    of an exact commit and a maintainer's approval. The ID is free in the
+    marketplace's registry and `preview.png` is at the root. What is left
+    is making the repo public and opening the submission issue, with
+    category `Developer Tools` and tags `ai`, `bar`, `quickshell`.
 - **Done when:** a fresh Omarchy machine goes from nothing to working with
   `herdr plugin install ofelcan164/muster` and then installing this plugin
   from Omarchy's marketplace, and removing either one leaves the other

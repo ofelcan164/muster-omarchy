@@ -189,4 +189,4 @@ through the marketplace at omarchyplugins.com (`omacom/omarchy-plugin-marketplac
 New listings need a public repo with a manifest, README and license, one
 category and one to three tags, an automated security scan of an exact commit,
 and a maintainer's approval. Install and update still clone mutable upstream
-HEAD. This repo is private, so publishing would be a later, separate decision.
+HEAD. The steps left for this repo are in the plan's M4.
