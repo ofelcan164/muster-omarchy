@@ -9,6 +9,10 @@ terminal. This plugin puts the same screen on the desktop. A diamond in the bar
 counts what needs you. Click it and the panel shows Muster's overlay, drawn the
 same way. Pick an agent and you land on its pane in herdr.
 
+Running agents in herdr without [Muster](https://github.com/ofelcan164/muster)?
+Get it first: one screen for every agent across every repo, and this plugin puts
+it in your bar.
+
 <img src="docs/screenshots/panel.png" alt="The Muster panel open under the bar's red diamond, showing four rows that need you, the agent tiles, and the orchestrator's last message" width="400">
 
 ## Requirements
