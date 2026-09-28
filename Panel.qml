@@ -13,8 +13,8 @@ import "lib/muster.js" as Muster
 // bottom, on the overlay's own dark surface and in its colours, so the panel
 // and the popup in herdr read as the same screen.
 //
-// A click or enter lands on the selection, and i, t, x, e, M, g, G and 1-9 do
-// what they do in the overlay, through the same muster commands.
+// A click or enter lands on the selection, and /, i, t, x, o, e, M, g, G and
+// 1-9 do what they do in the overlay, through the same muster commands.
 Panel {
   id: musterPanel // not `root`: inside a Component, `root` would resolve to that
   moduleName: "io.github.ofelcan164.muster"
@@ -37,7 +37,13 @@ Panel {
 
   readonly property bool readable: !!muster && muster.readable
   readonly property var ribbon: muster ? muster.ribbon : []
-  readonly property var tiles: muster ? muster.tiles : []
+  // /: typing a query, and the query itself. The query outlives the typing,
+  // so esc keeps the results to walk and a second esc clears them.
+  property bool searching: false
+  property string query: ""
+  readonly property bool filtered: query !== ""
+  readonly property var tiles: !muster || !muster.readable ? []
+    : filtered ? Muster.tilesView(muster.snapshot, muster.ui, muster.nowMs, query) : muster.tiles
   readonly property var orch: muster ? muster.orchestrator : ({ found: false })
   readonly property var header: muster ? muster.header : ({ counts: "", needsYou: 0 })
 
@@ -46,9 +52,10 @@ Panel {
   // a snapshot that arrives while the panel is open does not move it.
   readonly property var targetKeys: {
     var keys = []
-    for (var i = 0; i < ribbon.length; i++) keys.push("ribbon:" + ribbon[i].paneId)
+    if (!searching && !filtered)
+      for (var i = 0; i < ribbon.length; i++) keys.push("ribbon:" + ribbon[i].paneId)
     for (var j = 0; j < tiles.length; j++) keys.push("tile:" + tiles[j].key)
-    if (orch.found) keys.push("orch")
+    if (orch.found && !filtered) keys.push("orch")
     return keys
   }
   // Nothing is selected on open, as in the overlay: the first thing lit is
@@ -61,6 +68,7 @@ Panel {
   // The i input is open, and every key is text until enter or esc.
   property bool composing: false
   readonly property Item composeInput: composeField
+  readonly property Item searchInput: searchField
   // e: the orchestrator's last message, whole.
   property bool sayMore: false
   property bool jumping: false
@@ -103,7 +111,8 @@ Panel {
   }
 
   function textKey(text) {
-    if (text === "i") startCompose()
+    if (text === "/") startSearch()
+    else if (text === "i") startCompose()
     else if (text === "t") report()
     else if (text === "o") markOrchestrator()
     else if (text === "e") { if (orch.found && orch.said !== "") sayMore = !sayMore }
@@ -121,11 +130,33 @@ Panel {
 
   // esc folds the message first, then closes, never both at once.
   function escapeKey() {
-    if (sayMore) sayMore = false
+    if (filtered) searchField.text = ""
+    else if (sayMore) sayMore = false
     else close()
   }
 
+  // The query goes to searchField, and every key is text until esc or enter.
+  function startSearch() {
+    notice = ""
+    searching = true
+    searchField.forceActiveFocus()
+  }
+
+  // esc leaves the typing and keeps the results to walk.
+  function endSearch() {
+    searching = false
+    keyCatcher.forceActiveFocus()
+  }
+
+  // enter jumps, to the first match when nothing is selected yet.
+  function searchEnter() {
+    if (selectedIndex < 0 && targetKeys.length > 0) selectedKey = targetKeys[0]
+    activate()
+  }
+
   function startCompose() {
+    // The strip, where the input opens, is hidden under a query.
+    if (searching || filtered) return
     if (!orch.found) {
       say(false, "no orchestrator marked, so there is nobody to tell")
       return
@@ -229,6 +260,8 @@ Panel {
     selectedKey = ""
     notice = ""
     composing = false
+    searching = false
+    searchField.text = ""
     sayMore = false
     frame = 0
     if (muster) {
@@ -271,7 +304,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      blocked: musterPanel.composing
+      blocked: musterPanel.composing || musterPanel.searching
 
       onMoveRequested: function(dx, dy) { if (dy !== 0) musterPanel.move(dy) }
       onActivateRequested: musterPanel.activate()
@@ -352,7 +385,7 @@ Panel {
             // ---------------------------------------------------- the ribbon
             Column {
               width: parent.width
-              visible: musterPanel.readable && musterPanel.ribbon.length > 0
+              visible: musterPanel.readable && musterPanel.ribbon.length > 0 && !musterPanel.filtered
 
               // The rule carries the count and the colour of the most urgent
               // row, so the section says how bad things are before any row.
@@ -522,7 +555,8 @@ Panel {
               Text {
                 id: gridLabel
                 anchors.verticalCenter: parent.verticalCenter
-                text: " AGENTS & WORKSPACES "
+                text: !musterPanel.filtered ? " AGENTS & WORKSPACES "
+                  : musterPanel.tiles.length > 0 ? " MATCHES " : " NO MATCHES "
                 textFormat: Text.PlainText
                 color: Muster.DIM
                 font: musterPanel.mono
@@ -540,7 +574,7 @@ Panel {
 
             Text {
               visible: musterPanel.readable && musterPanel.tiles.length === 0
-              text: "  no workspaces discovered yet"
+              text: musterPanel.filtered ? "  nothing matches " + musterPanel.query : "  no workspaces discovered yet"
               textFormat: Text.PlainText
               color: Muster.DIM
               font: musterPanel.mono
@@ -816,9 +850,11 @@ Panel {
 
           Item { width: 1; height: musterPanel.lineHeight }
 
+          // A query takes the strip's place, as in the overlay.
           Item {
             width: parent.width
             height: musterPanel.lineHeight
+            visible: !musterPanel.filtered
 
             Text {
               id: stripLabel
@@ -843,7 +879,7 @@ Panel {
           Text {
             x: musterPanel.cell * 2
             width: parent.width - x - musterPanel.cell
-            visible: !musterPanel.orch.found
+            visible: !musterPanel.orch.found && !musterPanel.filtered
             text: "none marked · press o on the agent in charge, or name its pane orchestrator"
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
@@ -856,7 +892,7 @@ Panel {
             readonly property string key: "orch"
             readonly property bool selected: musterPanel.selectedKey === key
 
-            visible: musterPanel.orch.found === true
+            visible: musterPanel.orch.found === true && !musterPanel.filtered
             width: parent.width
             implicitHeight: orchLines.implicitHeight
             color: musterPanel.isActive(key, orchMouse.containsMouse) ? Muster.SEL_BG : "transparent"
@@ -986,6 +1022,58 @@ Panel {
             }
           }
 
+          // /: the query, and how much of the grid it leaves.
+          RowLayout {
+            x: musterPanel.cell
+            width: parent.width - x - musterPanel.cell
+            visible: musterPanel.searching || musterPanel.filtered
+            spacing: 0
+
+            Text {
+              text: "search "
+              textFormat: Text.PlainText
+              color: Muster.DIM
+              font: musterPanel.mono
+            }
+
+            TextField {
+              id: searchField
+              Layout.preferredWidth: contentWidth + musterPanel.cell
+              padding: 0
+              background: null
+              readOnly: !musterPanel.searching
+              color: Muster.YELLOW
+              selectionColor: Muster.SEL_BG
+              font: musterPanel.monoBold
+              onTextChanged: musterPanel.query = text
+              onAccepted: musterPanel.searchEnter()
+              Keys.onEscapePressed: function(event) {
+                event.accepted = true
+                musterPanel.endSearch()
+              }
+              Keys.onUpPressed: musterPanel.move(-1)
+              Keys.onDownPressed: musterPanel.move(1)
+            }
+
+            Text {
+              Layout.fillWidth: true
+              text: {
+                var workspaces = {}, agents = 0
+                for (var i = 0; i < musterPanel.tiles.length; i++) {
+                  workspaces[musterPanel.tiles[i].workspaceId] = true
+                  if (musterPanel.tiles[i].isAgent) agents++
+                }
+                return "  " + Muster.plural(Object.keys(workspaces).length, "workspace") + " · " +
+                  Muster.plural(agents, "agent") +
+                  (musterPanel.searching ? "  esc keeps results · enter jumps" : "  esc clears")
+              }
+              textFormat: Text.PlainText
+              elide: Text.ElideRight
+              color: Muster.FAINT
+              font: musterPanel.mono
+            }
+          }
+
           // The strip's last line: the input while it is open, then whatever
           // just happened, then the keys.
           RowLayout {
@@ -1040,7 +1128,7 @@ Panel {
 
           Text {
             width: parent.width - musterPanel.cell
-            visible: !musterPanel.composing && musterPanel.notice === "" && musterPanel.orch.found === true
+            visible: !musterPanel.composing && musterPanel.notice === "" && musterPanel.orch.found === true && !musterPanel.filtered
             text: Muster.stripHint(musterPanel.muster ? musterPanel.muster.snapshot : null, musterPanel.selectedPane)
             textFormat: Text.PlainText
             elide: Text.ElideRight

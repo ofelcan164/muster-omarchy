@@ -305,6 +305,40 @@ Item {
       w.close()
     },
 
+    function search() {
+      var w = widgets.fresh
+      w.open()
+      var p = panelOf(w)
+      var k = keysOf(w)
+
+      k.press(0, "/", 0)
+      check(p.searching, "/ opens the search")
+      check(k.blocked, "the panel's keys stand aside while it is open")
+      p.searchInput.text = "web"
+      eq(p.targetKeys, ["tile:pane:w2:p1", "tile:pane:w2:p2"], "a query leaves the matching tiles, without the ribbon or the strip")
+      p.endSearch()
+      check(!p.searching && p.filtered, "esc keeps the results")
+      k.press(Qt.Key_Down, "", 0)
+      eq(p.selectedKey, "tile:pane:w2:p1", "to walk")
+      k.press(0, "i", 0)
+      check(!p.composing, "i stays shut while the strip is hidden")
+      k.press(Qt.Key_Escape, "", 0)
+      check(!p.filtered && w.opened, "a second esc clears the query and leaves the panel open")
+      check(p.targetKeys.indexOf("orch") !== -1, "and brings the strip back")
+
+      k.press(0, "/", 0)
+      p.searchInput.text = "zzz"
+      eq(p.tiles.length, 0, "a query that hits nothing leaves nothing")
+      p.searchInput.text = "scr"
+      p.searchInput.accepted()
+      eq(lastProcess().command.slice(-2), ["jump", "ws:w3"], "enter jumps to the first match")
+      lastProcess().process.finish(1, "", "muster jump: gone")
+      w.close()
+      w.open()
+      check(!p.searching && !p.filtered, "reopening starts without a query")
+      w.close()
+    },
+
     function snapshotChanges() {
       files.write(dirs.fresh + "/snapshot.json", fixtureQuiet)
       var fv = fileView(dirs.fresh + "/snapshot.json")

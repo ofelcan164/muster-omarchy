@@ -307,7 +307,7 @@ test("tilesView is the overlay's grid: one tile per agent, one per empty workspa
   assert.deepEqual(tiles.map((t) => t.key),
     ["pane:w1:p1", "pane:w1:p2", "pane:w1:p3", "pane:w2:p1", "pane:w2:p2", "ws:w3"])
   assert.deepEqual(tiles[1], {
-    key: "pane:w1:p2", jump: "w1:p2", isAgent: true, paneId: "w1:p2",
+    key: "pane:w1:p2", jump: "w1:p2", isAgent: true, paneId: "w1:p2", workspaceId: "w1",
     barColor: M.PALETTE[12],
     num: "▸1", label: "api", chip: "[p2]",
     sigil: "✦", repo: "api", repoColor: M.PALETTE[12], branch: "main",
@@ -325,10 +325,28 @@ test("tilesView is the overlay's grid: one tile per agent, one per empty workspa
   assert.deepEqual(tiles[3].dependsOn, { sigil: "✦", repo: "api", color: M.PALETTE[12], when: tiles[3].dependsOn.when })
   assert.match(tiles[3].dependsOn.when, /^landed \d+[smhd] ago$/)
   assert.deepEqual(tiles[5], {
-    key: "ws:w3", jump: "ws:w3", isAgent: false, paneId: "",
+    key: "ws:w3", jump: "ws:w3", isAgent: false, paneId: "", workspaceId: "w3",
     barColor: M.FAINT, num: " 3", label: "scratch",
     sigils: [{ sigil: "○", color: M.NEUTRAL_COLOR }], detail: "scratch"
   })
+})
+
+test("tilesView with a / query keeps what every term hits, best first", () => {
+  const keys = (q) => plain(M.tilesView(snapshot(), M.parseUi(""), GENERATED, q).map((t) => t.key))
+  assert.deepEqual(keys("web"), ["pane:w2:p1", "pane:w2:p2"], "workspace and repo")
+  assert.deepEqual(keys("log"), ["pane:w2:p1", "pane:w2:p2"], "the branch")
+  assert.deepEqual(keys("api p2"), ["pane:w1:p2"], "every term has to hit, the pane chip included")
+  assert.deepEqual(keys("scr"), ["ws:w3"], "an empty workspace by its label")
+  assert.deepEqual(keys("zzz"), [])
+  assert.deepEqual(keys("   "), keys(""), "blank is no query")
+})
+
+test("scoreTerm ranks a prefix over a substring over the letters in order", () => {
+  assert.equal(M.scoreTerm("con", "Contracts"), 100)
+  assert.equal(M.scoreTerm("tra", "contracts"), 60)
+  assert.equal(M.scoreTerm("cnt", "contracts"), 20)
+  assert.equal(M.scoreTerm("tnc", "contracts"), 0)
+  assert.equal(M.scoreTerm("a", ""), 0)
 })
 
 test("tilesView follows the sort ui.json holds", () => {

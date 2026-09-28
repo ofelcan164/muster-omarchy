@@ -78,6 +78,7 @@ running, a jump starts it; jump again once your agents are back.
 |---|---|
 | `j` / `k`, arrows | Move the selection |
 | `g` / `G` | First / last |
+| `/` | Search tiles by workspace, pane, repo or branch. `esc` keeps the results, a second `esc` clears them |
 | `enter` | Jump to the selection |
 | `1`–`9` | Jump to that ribbon row |
 | `M` | Jump to the orchestrator |
