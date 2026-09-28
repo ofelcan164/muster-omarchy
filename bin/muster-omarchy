@@ -6,7 +6,7 @@
 #
 #   muster-omarchy [--muster CMD] [--state-dir DIR] jump <pane-id|orchestrator>
 #   muster-omarchy [--muster CMD] [--state-dir DIR] tell <text>
-#   muster-omarchy [--muster CMD] [--state-dir DIR] report|dismiss <pane-id>
+#   muster-omarchy [--muster CMD] [--state-dir DIR] report|dismiss|mark-orchestrator <pane-id>
 #   muster-omarchy raise
 #   muster-omarchy which [--muster CMD]
 #
@@ -258,8 +258,8 @@ done
 case ${1-} in
 jump) cmd_jump "${2-}" ;;
 tell) cmd_tell "${2-}" ;;
-report | dismiss) cmd_pane_action "$1" "${2-}" ;;
+report | dismiss | mark-orchestrator) cmd_pane_action "$1" "${2-}" ;;
 raise) cmd_raise ;;
 which) cmd_which ;;
-*) die "usage: muster-omarchy [--muster CMD] [--state-dir DIR] jump <pane-id|orchestrator> | tell <text> | report <pane-id> | dismiss <pane-id> | raise | which" ;;
+*) die "usage: muster-omarchy [--muster CMD] [--state-dir DIR] jump <pane-id|orchestrator> | tell <text> | report <pane-id> | dismiss <pane-id> | mark-orchestrator <pane-id> | raise | which" ;;
 esac

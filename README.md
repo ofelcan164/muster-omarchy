@@ -80,10 +80,11 @@ running, a jump starts it; jump again once your agents are back.
 | `i` | Message the orchestrator (`enter` sends, `esc` cancels) |
 | `t` | Tell the orchestrator about the selected landed row, or the only one |
 | `x` | Dismiss the selected ribbon row until its status changes |
+| `o` | Mark the selected agent as the orchestrator |
 | `e` | Expand or fold the orchestrator's last message |
 | `esc` | Fold the message, then close |
 
-`i`, `t` and `x` run the same `muster` commands as the overlay's keys, so both
+`i`, `t`, `x` and `o` run the same `muster` commands as the overlay's keys, so both
 screens agree: a row dismissed in the panel is gone from the overlay, and the
 other way round.
 
@@ -109,7 +110,7 @@ The plugin reads two files Muster writes, `snapshot.json` and `ui.json`, and
 keeps no herdr connection of its own. Everything else goes through
 `bin/muster-omarchy`, which runs:
 
-- `muster jump`, `tell`, `report` and `dismiss`, for the panel's actions
+- `muster jump`, `tell`, `report`, `dismiss` and `mark-orchestrator`, for the panel's actions
 - `hyprctl`, to find herdr's window and bring it forward after a jump
 - `omarchy-launch-terminal-herdr`, when a jump finds herdr not running
 

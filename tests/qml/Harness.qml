@@ -246,6 +246,24 @@ Item {
       eq(lastProcess().command.slice(-2), ["report", "w2:p1"], "t on the landed agent's tile reports it")
       lastProcess().process.finish(0, "told the orchestrator api landed\n", "")
 
+      var runs = StubLog.processes.length
+      p.selectedKey = "ribbon:w1:p9"
+      k.press(0, "o", 0)
+      check(p.notice.indexOf("select one first") !== -1, "o on a pane with no agent says so")
+      p.selectedKey = "tile:pane:w1:p1"
+      k.press(0, "o", 0)
+      eq(p.notice, "already the orchestrator", "o on the orchestrator says so")
+      eq(StubLog.processes.length, runs, "and neither runs anything")
+      p.selectedKey = "tile:pane:w2:p1"
+      k.press(0, "o", 0)
+      run = lastProcess()
+      eq(run.command.slice(-2), ["mark-orchestrator", "w2:p1"], "o marks the selected agent")
+      run.process.finish(0, "marked w2:p1 as the orchestrator\n", "")
+      eq(p.notice, "marked as the orchestrator", "and says it did")
+      k.press(0, "o", 0)
+      lastProcess().process.finish(1, "", "muster: rename: no such pane")
+      eq(p.notice, "could not mark: muster: rename: no such pane", "a failed mark says why")
+
       k.press(0, "M", 0)
       run = lastProcess()
       eq(run.command.slice(-2), ["jump", "orchestrator"], "M jumps to the orchestrator")

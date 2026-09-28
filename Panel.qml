@@ -105,6 +105,7 @@ Panel {
   function textKey(text) {
     if (text === "i") startCompose()
     else if (text === "t") report()
+    else if (text === "o") markOrchestrator()
     else if (text === "e") { if (orch.found && orch.said !== "") sayMore = !sayMore }
     else if (text === "g") { if (targetKeys.length > 0) selectedKey = targetKeys[0] }
     else if (text === "G") { if (targetKeys.length > 0) selectedKey = targetKeys[targetKeys.length - 1] }
@@ -170,6 +171,23 @@ Panel {
       return
     }
     actions.dismiss(selectedPane, function(ok, message) { if (!ok) say(false, message) })
+  }
+
+  // o names the selected agent the orchestrator. The strip only changes once
+  // the daemon reconciles, a few seconds on, so say it happened.
+  function markOrchestrator() {
+    if (!Muster.isAgentPane(muster ? muster.snapshot : null, selectedPane)) {
+      say(false, "o marks an agent as the orchestrator: select one first")
+      return
+    }
+    if (orch.found && orch.paneId === selectedPane) {
+      say(false, "already the orchestrator")
+      return
+    }
+    notice = "marking…"
+    actions.mark(selectedPane, function(ok, message) {
+      say(ok, ok ? "marked as the orchestrator" : "could not mark: " + message)
+    })
   }
 
   // Up and down wrap, so holding a key never dead-ends. Nothing selected yet:

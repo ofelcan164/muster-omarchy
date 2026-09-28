@@ -33,6 +33,7 @@ Item {
   function tell(text, onDone) { run(["tell", String(text)], onDone) }
   function report(pane, onDone) { run(["report", String(pane)], onDone) }
   function dismiss(pane, onDone) { run(["dismiss", String(pane)], onDone) }
+  function mark(pane, onDone) { run(["mark-orchestrator", String(pane)], onDone) }
 
   function pump() {
     if (current !== null || queue.length === 0) return

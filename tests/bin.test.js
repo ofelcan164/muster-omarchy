@@ -131,7 +131,7 @@ test("a jump with herdr not running starts herdr and says the jump did not happe
   assert.deepEqual(s.waitForCalls(2), ["muster jump w1:p2", "launch"])
 })
 
-test("tell, report and dismiss pass through to muster and print what it said", () => {
+test("tell, report, dismiss and mark-orchestrator pass through to muster and print what it said", () => {
   const s = sandbox()
   let res = s.run(["--state-dir", "/state", "tell", "pull main; rerun $(id)"], { MUSTER_OUT: "sent to the orchestrator" })
   assert.equal(res.status, 0, res.stderr)
@@ -140,10 +140,13 @@ test("tell, report and dismiss pass through to muster and print what it said", (
   assert.equal(res.stdout.trim(), "told the orchestrator api landed")
   res = s.run(["--state-dir", "/state", "dismiss", "w2:p1"])
   assert.equal(res.status, 0, res.stderr)
+  res = s.run(["--state-dir", "/state", "mark-orchestrator", "w2:p1"], { MUSTER_OUT: "marked w2:p1 as the orchestrator" })
+  assert.equal(res.stdout.trim(), "marked w2:p1 as the orchestrator")
   assert.deepEqual(s.calls(), [
     "muster --state-dir /state tell pull main; rerun $(id)",
     "muster --state-dir /state report w3:p1",
-    "muster --state-dir /state dismiss w2:p1"
+    "muster --state-dir /state dismiss w2:p1",
+    "muster --state-dir /state mark-orchestrator w2:p1"
   ])
 })
 
@@ -152,6 +155,7 @@ test("tell refuses an empty message, report and dismiss refuse a bad pane", () =
   assert.match(s.run(["tell", "  "]).stderr, /nothing to send/)
   assert.match(s.run(["report", "-h"]).stderr, /not a pane id/)
   assert.match(s.run(["dismiss", ""]).stderr, /not a pane id/)
+  assert.match(s.run(["mark-orchestrator", "$(id)"]).stderr, /not a pane id/)
   assert.deepEqual(s.calls(), [])
 })
 
