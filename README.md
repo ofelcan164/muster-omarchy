@@ -117,6 +117,16 @@ keeps no herdr connection of its own. Everything else goes through
 It reads herdr's config to find the `muster` binary and never writes it. It
 writes nothing of Omarchy's, needs no root, and makes no network requests.
 
+## Update
+
+```sh
+omarchy plugin update io.github.ofelcan164.muster
+omarchy restart shell
+```
+
+The shell reloads the plugin after an update, but it keeps the panel it had
+already loaded until it restarts.
+
 ## Remove
 
 ```sh
